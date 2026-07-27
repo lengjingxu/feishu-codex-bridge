@@ -35,11 +35,13 @@ function shell(title: string, elements: object[]): object {
 
 export function welcomeCard(): object {
   return shell('Codex 项目助手', [
-    divMd('欢迎使用 Codex 项目助手。你可以选择本地项目、恢复已有会话，并在飞书话题中直接用中文协作。'),
+    divMd('选择一个项目后，在项目群管理会话；进入话题后，直接用中文向 Codex 提交需求。'),
     HR,
     actions([
       { text: '选择项目', value: { cmd: 'projects' }, style: 'primary' },
       { text: '已绑定项目', value: { cmd: 'projects.bound' } },
+    ]),
+    actions([
       { text: '连接状态', value: { cmd: 'status' } },
       { text: '使用帮助', value: { cmd: 'help' } },
     ]),
@@ -59,10 +61,10 @@ export function projectsCard(projects: ProjectCardInfo[], page = 0, pageSize = 6
   const pageItems = projects.slice(start, start + pageSize);
   const elements: object[] = [divMd(projects.length ? `共 **${projects.length}** 个项目，选择一个开始：` : '暂时没有可用项目。请在 Bridge 配置中添加项目目录。')];
   for (const project of pageItems) {
-    elements.push(HR, divMd(`**${escapeMd(project.name)}**\n状态：${project.chatId ? '已绑定项目群' : '尚未绑定项目群'}\n\`${escapeCode(project.cwd)}\`\n主机：${escapeMd(project.hostId ?? '本机')}`));
+    elements.push(HR, divMd(`**${escapeMd(project.name)}**\n状态：${project.chatId ? '已绑定项目群' : '尚未绑定项目群'}\n主机：${escapeMd(project.hostId ?? '本机')}`));
     elements.push(actions([
       { text: project.chatId ? '打开项目群' : '创建项目群', value: { cmd: 'project.open', arg: project.projectKey }, style: 'primary' },
-      { text: '查看会话', value: { cmd: 'project.sessions', arg: project.projectKey } },
+      ...(project.chatId ? [{ text: '查看会话', value: { cmd: 'project.sessions', arg: project.projectKey } }] : []),
     ]));
   }
   const nav: ButtonSpec[] = [];
@@ -83,7 +85,7 @@ export function projectWelcomeCard(info: ProjectWelcomeInfo): object {
     ]),
     actions([
       { text: '项目状态', value: { cmd: 'project.status' } },
-      { text: '刷新列表', value: { cmd: 'sessions' } },
+      { text: '刷新会话', value: { cmd: 'sessions' } },
     ]),
     actions([
       { text: '切换项目', value: { cmd: 'projects' } },
@@ -114,8 +116,13 @@ export interface SessionCardInfo {
   updatedAt: number;
 }
 
+export interface SessionDetailCardInfo extends SessionCardInfo {
+  turnCount: number;
+  recentActivity: Array<{ kind: string; text: string }>;
+}
+
 export function sessionsCard(projectName: string, sessions: SessionCardInfo[], nextCursor?: string): object {
-  const elements: object[] = [divMd(`项目：**${escapeMd(projectName)}**\n当前位置：项目群\n选择一个未归档会话，Bridge 会自动为它创建一个飞书话题。`)];
+  const elements: object[] = [divMd(`项目：**${escapeMd(projectName)}**\n当前位置：项目群\n共 **${sessions.length}** 个未归档会话。选择一个后，Bridge 会为它创建对应话题。`)];
   if (sessions.length === 0) elements.push(HR, divMd('暂无可恢复的会话。可以直接新建一个。'));
   for (const session of sessions) {
     const title = session.name?.trim() || session.preview.slice(0, 40) || '未命名会话';
@@ -128,7 +135,6 @@ export function sessionsCard(projectName: string, sessions: SessionCardInfo[], n
     elements.push(actions([
       { text: '继续此会话', value: { cmd: 'session.open', arg: session.threadId }, style: 'primary' },
       { text: '查看详情', value: { cmd: 'session.detail', arg: session.threadId } },
-      { text: '归档', value: { cmd: 'session.archive', arg: session.threadId }, style: 'danger' },
     ]));
   }
   const footer: ButtonSpec[] = [
@@ -140,6 +146,23 @@ export function sessionsCard(projectName: string, sessions: SessionCardInfo[], n
   return shell('会话列表', elements);
 }
 
+export function sessionDetailCard(projectName: string, detail: SessionDetailCardInfo): object {
+  const activity = detail.recentActivity.length > 0
+    ? detail.recentActivity.slice(-5).map((item) => `· **${escapeMd(item.kind)}**：${escapeMd(item.text.slice(0, 180))}`).join('\n')
+    : '暂无可展示的最近活动。';
+  return shell('会话详情', [
+    divMd(`项目：**${escapeMd(projectName)}**\n会话：**${escapeMd(detail.name?.trim() || detail.preview.slice(0, 40) || '未命名会话')}**\n状态：${sessionStatusText(detail.status, detail.activeFlags)}\n最近使用：${formatRelative(detail.updatedAt)}\n历史轮次：${detail.turnCount}`),
+    HR,
+    divMd(`最近活动\n${activity}`),
+    HR,
+    actions([
+      { text: '继续此会话', value: { cmd: 'session.open', arg: detail.threadId }, style: 'primary' },
+      { text: '归档会话', value: { cmd: 'session.archive', arg: detail.threadId }, style: 'danger' },
+      { text: '返回会话列表', value: { cmd: 'sessions' } },
+    ]),
+  ]);
+}
+
 export function sessionProgressCard(projectName: string, detail: SessionDetail, autoSync = false): object {
   const activity = detail.recentActivity.length > 0
     ? detail.recentActivity.slice(-8).map((item) => {
@@ -148,15 +171,15 @@ export function sessionProgressCard(projectName: string, detail: SessionDetail, 
     : '暂无可展示的最新活动。';
   const status = sessionStatusText(detail.status, detail.activeFlags);
   return shell('Codex 最新进度', [
-    divMd(`项目：**${escapeMd(projectName)}**\n状态：**${status}**\n最近更新：${formatRelative(detail.updatedAt)}\n历史轮次：${detail.turnCount}`),
+    divMd(`项目：**${escapeMd(projectName)}**\n状态：**${status}**\n最近更新：${formatRelative(detail.updatedAt)}${autoSync ? '\n自动刷新：已开启（每 5 秒）' : ''}`),
     HR,
     divMd(activity),
     HR,
     actions([
       { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
       autoSync
-        ? { text: '停止自动同步', value: { cmd: 'sync.stop' }, style: 'danger' }
-        : { text: '开始自动同步', value: { cmd: 'sync.auto' } },
+        ? { text: '关闭自动刷新', value: { cmd: 'sync.stop' }, style: 'danger' }
+        : { text: '开启自动刷新', value: { cmd: 'sync.auto' } },
       { text: '查看状态', value: { cmd: 'status' } },
     ]),
   ]);
@@ -174,7 +197,7 @@ export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd:
   const displayProjectName = cleanTopicPart(projectName, '未命名项目');
   const displaySessionTitle = cleanTopicPart(sessionTitle, '新会话');
   return shell(topicTitle(displayProjectName, displaySessionTitle), [
-    divMd(`项目：**${escapeMd(displayProjectName)}**\n会话：**${escapeMd(displaySessionTitle)}**\n工作目录：\`${escapeCode(cwd)}\`\n\n现在可以直接在这个话题中输入中文需求。`),
+    divMd(`项目：**${escapeMd(displayProjectName)}**\n会话：**${escapeMd(displaySessionTitle)}**\n\n现在可以直接在这个话题中输入中文需求。`),
     divMd('当前位置：Codex 工作话题。这里用于实际编程对话，之后直接发送需求即可。'),
     actions([
       { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
@@ -186,7 +209,7 @@ export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd:
     ]),
     actions([
       { text: '查看状态', value: { cmd: 'status' } },
-      { text: '自动同步', value: { cmd: 'sync.auto' } },
+      { text: '开启自动刷新', value: { cmd: 'sync.auto' } },
       { text: '使用说明', value: { cmd: 'help' } },
     ]),
   ]);
