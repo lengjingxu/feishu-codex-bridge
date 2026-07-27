@@ -34,14 +34,14 @@ function shell(title: string, elements: object[]): object {
 }
 
 export function welcomeCard(): object {
-  return shell('👋 Codex 项目助手', [
+  return shell('Codex 项目助手', [
     divMd('欢迎使用 Codex 项目助手。你可以选择本地项目、恢复已有会话，并在飞书话题中直接用中文协作。'),
     HR,
     actions([
-      { text: '📁 选择项目', value: { cmd: 'projects' }, style: 'primary' },
-      { text: '🔗 已绑定项目', value: { cmd: 'projects.bound' } },
-      { text: '📡 连接状态', value: { cmd: 'status' } },
-      { text: '💡 使用帮助', value: { cmd: 'help' } },
+      { text: '选择项目', value: { cmd: 'projects' }, style: 'primary' },
+      { text: '已绑定项目', value: { cmd: 'projects.bound' } },
+      { text: '连接状态', value: { cmd: 'status' } },
+      { text: '使用帮助', value: { cmd: 'help' } },
     ]),
   ]);
 }
@@ -59,7 +59,7 @@ export function projectsCard(projects: ProjectCardInfo[], page = 0, pageSize = 6
   const pageItems = projects.slice(start, start + pageSize);
   const elements: object[] = [divMd(projects.length ? `共 **${projects.length}** 个项目，选择一个开始：` : '暂时没有可用项目。请在 Bridge 配置中添加项目目录。')];
   for (const project of pageItems) {
-    elements.push(HR, divMd(`**${escapeMd(project.name)}**${project.chatId ? '  ✅ 已绑定群' : ''}\n\`${escapeCode(project.cwd)}\`\n主机：${escapeMd(project.hostId ?? '本机')}`));
+    elements.push(HR, divMd(`**${escapeMd(project.name)}**\n状态：${project.chatId ? '已绑定项目群' : '尚未绑定项目群'}\n\`${escapeCode(project.cwd)}\`\n主机：${escapeMd(project.hostId ?? '本机')}`));
     elements.push(actions([
       { text: project.chatId ? '打开项目群' : '创建项目群', value: { cmd: 'project.open', arg: project.projectKey }, style: 'primary' },
       { text: '查看会话', value: { cmd: 'project.sessions', arg: project.projectKey } },
@@ -69,22 +69,37 @@ export function projectsCard(projects: ProjectCardInfo[], page = 0, pageSize = 6
   if (page > 0) nav.push({ text: '上一页', value: { cmd: 'projects.page', arg: String(page - 1) } });
   if (start + pageSize < projects.length) nav.push({ text: '下一页', value: { cmd: 'projects.page', arg: String(page + 1) } });
   if (nav.length) elements.push(HR, actions(nav));
-  return shell('📁 本地项目', elements);
+  return shell('本地项目', elements);
 }
 
 export interface ProjectWelcomeInfo { name: string; cwd: string; }
 
 export function projectWelcomeCard(info: ProjectWelcomeInfo): object {
-  return shell('📁 项目已连接', [
-    divMd(`项目：**${escapeMd(info.name)}**\n路径：\`${escapeCode(info.cwd)}\`\n\n请选择要继续的操作：`),
+  return shell('项目工作台', [
+    divMd(`项目：**${escapeMd(info.name)}**\n当前位置：项目群\n\n这里用于管理项目和会话。\n代码需求请进入具体话题后发送。\n\n请选择下一步：`),
     actions([
-      { text: '📚 查看会话', value: { cmd: 'sessions' }, style: 'primary' },
-      { text: '🆕 新建会话', value: { cmd: 'session.new' }, style: 'primary' },
-      { text: '📊 项目状态', value: { cmd: 'project.status' } },
-      { text: '🔁 切换项目', value: { cmd: 'projects' } },
-      { text: '💡 帮助', value: { cmd: 'help' } },
+      { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
+      { text: '新建会话', value: { cmd: 'session.new' } },
+    ]),
+    actions([
+      { text: '项目状态', value: { cmd: 'project.status' } },
+      { text: '刷新列表', value: { cmd: 'sessions' } },
+    ]),
+    actions([
+      { text: '切换项目', value: { cmd: 'projects' } },
+      { text: '使用说明', value: { cmd: 'help' } },
     ]),
   ]);
+}
+
+export function projectFeedbackCard(
+  title: string,
+  detail: string,
+  buttons: ButtonSpec[] = [],
+): object {
+  const elements: object[] = [divMd(detail)];
+  if (buttons.length > 0) elements.push(HR, actions(buttons));
+  return shell(title, elements);
 }
 
 export interface SessionCardInfo {
@@ -100,7 +115,7 @@ export interface SessionCardInfo {
 }
 
 export function sessionsCard(projectName: string, sessions: SessionCardInfo[], nextCursor?: string): object {
-  const elements: object[] = [divMd(`项目：**${escapeMd(projectName)}**\n选择一个会话，Bridge 会自动为它创建一个飞书话题。`)];
+  const elements: object[] = [divMd(`项目：**${escapeMd(projectName)}**\n当前位置：项目群\n选择一个未归档会话，Bridge 会自动为它创建一个飞书话题。`)];
   if (sessions.length === 0) elements.push(HR, divMd('暂无可恢复的会话。可以直接新建一个。'));
   for (const session of sessions) {
     const title = session.name?.trim() || session.preview.slice(0, 40) || '未命名会话';
@@ -108,9 +123,6 @@ export function sessionsCard(projectName: string, sessions: SessionCardInfo[], n
     const metadata = [
       `状态：${status}`,
       formatRelative(session.updatedAt),
-      session.source ? `来源：${sourceText(session.source)}` : '',
-      session.forkedFromId ? '分支会话' : '',
-      session.gitBranch ? `分支：${escapeMd(session.gitBranch)}` : '',
     ].filter(Boolean).join(' · ');
     elements.push(HR, divMd(`**${escapeMd(title)}**\n${escapeMd(session.preview.slice(0, 120))}\n${metadata}`));
     elements.push(actions([
@@ -120,33 +132,32 @@ export function sessionsCard(projectName: string, sessions: SessionCardInfo[], n
     ]));
   }
   const footer: ButtonSpec[] = [
-    { text: '🆕 新建会话', value: { cmd: 'session.new' }, style: 'primary' },
-    { text: '🔄 刷新列表', value: { cmd: 'sessions' } },
+    { text: '新建会话', value: { cmd: 'session.new' }, style: 'primary' },
+    { text: '刷新列表', value: { cmd: 'sessions' } },
   ];
   if (nextCursor) footer.splice(1, 0, { text: '加载更多', value: { cmd: 'sessions.page', arg: nextCursor } });
   elements.push(HR, actions(footer));
-  return shell('📚 Codex 会话', elements);
+  return shell('会话列表', elements);
 }
 
 export function sessionProgressCard(projectName: string, detail: SessionDetail, autoSync = false): object {
   const activity = detail.recentActivity.length > 0
     ? detail.recentActivity.slice(-8).map((item) => {
-      const icon = item.kind === '用户' ? '👤' : item.kind === '助手' ? '🤖' : item.kind === '工具' ? '🛠️' : '🔹';
-      return `${icon} **${item.kind}**：${escapeMd(item.text.slice(0, 220))}`;
+      return `· **${item.kind}**：${escapeMd(item.text.slice(0, 220))}`;
     }).join('\n')
     : '暂无可展示的最新活动。';
   const status = sessionStatusText(detail.status, detail.activeFlags);
-  return shell('🔄 Codex 最新进度', [
+  return shell('Codex 最新进度', [
     divMd(`项目：**${escapeMd(projectName)}**\n状态：**${status}**\n最近更新：${formatRelative(detail.updatedAt)}\n历史轮次：${detail.turnCount}`),
     HR,
     divMd(activity),
     HR,
     actions([
-      { text: '🔄 刷新进度', value: { cmd: 'sync' }, style: 'primary' },
+      { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
       autoSync
-        ? { text: '⏹ 停止自动同步', value: { cmd: 'sync.stop' }, style: 'danger' }
-        : { text: '▶️ 开始自动同步', value: { cmd: 'sync.auto' } },
-      { text: '📊 查看状态', value: { cmd: 'status' } },
+        ? { text: '停止自动同步', value: { cmd: 'sync.stop' }, style: 'danger' }
+        : { text: '开始自动同步', value: { cmd: 'sync.auto' } },
+      { text: '查看状态', value: { cmd: 'status' } },
     ]),
   ]);
 }
@@ -159,28 +170,24 @@ function sessionStatusText(status: string, activeFlags: string[] | undefined): s
   return '空闲';
 }
 
-function sourceText(source: string): string {
-  if (source === 'cli') return 'Codex 命令行';
-  if (source === 'vscode') return 'VS Code';
-  if (source === 'appServer') return 'Codex 应用服务';
-  if (source === 'exec') return '自动执行';
-  if (source === 'subAgent') return '子代理';
-  return source;
-}
-
 export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd: string): object {
   const displayProjectName = cleanTopicPart(projectName, '未命名项目');
   const displaySessionTitle = cleanTopicPart(sessionTitle, '新会话');
   return shell(topicTitle(displayProjectName, displaySessionTitle), [
     divMd(`项目：**${escapeMd(displayProjectName)}**\n会话：**${escapeMd(displaySessionTitle)}**\n工作目录：\`${escapeCode(cwd)}\`\n\n现在可以直接在这个话题中输入中文需求。`),
+    divMd('当前位置：Codex 工作话题。这里用于实际编程对话，之后直接发送需求即可。'),
     actions([
-      { text: '📊 查看状态', value: { cmd: 'status' } },
-      { text: '🔄 刷新进度', value: { cmd: 'sync' }, style: 'primary' },
-      { text: '▶️ 自动同步', value: { cmd: 'sync.auto' } },
-      { text: '⏹ 停止任务', value: { cmd: 'stop' }, style: 'danger' },
-      { text: '📚 切换会话', value: { cmd: 'sessions' } },
-      { text: '🆕 新建会话', value: { cmd: 'session.new' } },
-      { text: '💡 帮助', value: { cmd: 'help' } },
+      { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
+      { text: '停止任务', value: { cmd: 'stop' }, style: 'danger' },
+    ]),
+    actions([
+      { text: '切换会话', value: { cmd: 'sessions' } },
+      { text: '新建会话', value: { cmd: 'session.new' } },
+    ]),
+    actions([
+      { text: '查看状态', value: { cmd: 'status' } },
+      { text: '自动同步', value: { cmd: 'sync.auto' } },
+      { text: '使用说明', value: { cmd: 'help' } },
     ]),
   ]);
 }
@@ -225,7 +232,7 @@ export function workspacesCard(current: string | undefined, named: Record<string
     elements.push(HR);
     elements.push(divMd('暂无命名工作空间。'));
     elements.push(
-      divMd('💡 发送 `/ws save <name>` 把当前 cwd 存为命名工作空间'),
+      divMd('发送 `/ws save <name>` 把当前工作目录保存为命名工作空间'),
     );
   } else {
     elements.push(HR);
@@ -242,7 +249,7 @@ export function workspacesCard(current: string | undefined, named: Record<string
     });
   }
 
-  return shell('📂 工作空间', elements);
+  return shell('工作空间', elements);
 }
 
 export interface StatusInfo {
@@ -261,23 +268,23 @@ export interface StatusInfo {
 
 export function statusCard(info: StatusInfo): object {
   if (info.hideInternalIds) {
-    return shell('📊 当前状态', [
+    return shell('当前状态', [
       divMd([
-        info.projectName ? `📁 项目：**${escapeMd(info.projectName)}**` : '',
-        `📂 工作目录：\`${escapeCode(info.cwd)}\``,
-        info.sessionTitle ? `💬 当前会话：**${escapeMd(info.sessionTitle)}**` : '💬 当前会话：尚未绑定',
-        `🤖 助手：${escapeMd(info.agentName)}`,
+        info.projectName ? `项目：**${escapeMd(info.projectName)}**` : '',
+        `工作目录：\`${escapeCode(info.cwd)}\``,
+        info.sessionTitle ? `当前会话：**${escapeMd(info.sessionTitle)}**` : '当前会话：尚未绑定',
+        `助手：${escapeMd(info.agentName)}`,
       ].filter(Boolean).join('\n')),
       HR,
       actions([
-        { text: '📚 查看会话', value: { cmd: 'sessions' }, style: 'primary' },
-        { text: '🆕 新建会话', value: { cmd: 'session.new' } },
-        { text: '💡 使用帮助', value: { cmd: 'help' } },
+        { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
+        { text: '新建会话', value: { cmd: 'session.new' } },
+        { text: '使用帮助', value: { cmd: 'help' } },
       ]),
     ]);
   }
   const sessionLine = info.sessionId
-    ? `\`${info.sessionId.slice(0, 8)}…\`${info.sessionStale ? ' ⚠️ 旧 cwd，下一条会新建' : ''}`
+    ? `\`${info.sessionId.slice(0, 8)}…\`${info.sessionStale ? ' ! 旧工作目录，下一条会新建' : ''}`
     : '(无)';
   // For topic groups, surface that the scope is per-topic so the user
   // knows /cd / /new only affect this topic.
@@ -286,24 +293,24 @@ export function statusCard(info: StatusInfo): object {
       ? `\`${escapeCode(info.scope)}\` _（话题独立 session）_`
       : `\`${escapeCode(info.scope)}\``;
   const lines = [
-    `🧭 **scope**: ${scopeLine}`,
-    `📁 **cwd**: \`${escapeCode(info.cwd)}\``,
-    `🔗 **session**: ${sessionLine}`,
-    `🤖 **agent**: ${escapeMd(info.agentName)}`,
+    `范围：${scopeLine}`,
+    `工作目录：\`${escapeCode(info.cwd)}\``,
+    `会话：${sessionLine}`,
+    `助手：${escapeMd(info.agentName)}`,
   ];
-  return shell('📊 当前状态', [
+  return shell('当前状态', [
     divMd(lines.join('\n')),
     HR,
     actions([
-      { text: '🆕 新会话', value: { cmd: 'new' }, style: 'primary' },
-      { text: '📂 工作空间', value: { cmd: 'ws.list' } },
-      { text: '💡 帮助', value: { cmd: 'help' } },
+      { text: '新会话', value: { cmd: 'new' }, style: 'primary' },
+      { text: '工作空间', value: { cmd: 'ws.list' } },
+      { text: '使用帮助', value: { cmd: 'help' } },
     ]),
   ]);
 }
 
 export function helpCard(): object {
-  return shell('💡 使用帮助', [
+  return shell('使用帮助', [
     divMd(
       [
         '**推荐用法**',
@@ -319,9 +326,9 @@ export function helpCard(): object {
     ),
     HR,
     actions([
-      { text: '📊 状态', value: { cmd: 'status' }, style: 'primary' },
-      { text: '📁 选择项目', value: { cmd: 'projects' } },
-      { text: '🆕 新会话', value: { cmd: 'session.new' } },
+      { text: '状态', value: { cmd: 'status' }, style: 'primary' },
+      { text: '选择项目', value: { cmd: 'projects' } },
+      { text: '新会话', value: { cmd: 'session.new' } },
     ]),
   ]);
 }

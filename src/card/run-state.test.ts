@@ -11,7 +11,7 @@ describe('run-state OMP UI integration', () => {
     expect(state.footer).toBe('waiting_input');
     expect(state.blocks.at(-1)).toEqual({
       kind: 'text',
-      content: '🧩 OMP 需要用户交互：**Need input**\n\n已发送交互卡片，请在那里完成操作。',
+      content: 'OMP 需要用户交互：**Need input**\n\n已发送交互卡片，请在那里完成操作。',
       streaming: false,
     });
   });

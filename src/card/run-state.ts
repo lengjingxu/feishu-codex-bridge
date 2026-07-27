@@ -126,7 +126,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
           ...closeStreamingText(state.blocks),
           {
             kind: 'text',
-            content: `🧩 OMP 需要用户交互：**${evt.request.title}**\n\n已发送交互卡片，请在那里完成操作。`,
+            content: `OMP 需要用户交互：**${evt.request.title}**\n\n已发送交互卡片，请在那里完成操作。`,
             streaming: false,
           },
         ],
@@ -139,7 +139,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
         ...state,
         blocks: [
           ...closeStreamingText(state.blocks),
-          { kind: 'text', content: `🧩 OMP 交互已取消：${evt.targetId}`, streaming: false },
+          { kind: 'text', content: `OMP 交互已取消：${evt.targetId}`, streaming: false },
         ],
         footer: state.footer === 'waiting_input' ? null : state.footer,
       };
@@ -169,7 +169,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
           ...closeStreamingText(state.blocks),
           {
             kind: 'text',
-            content: `🔗 OMP 请求打开链接：${evt.url}${evt.instructions ? `\n\n${evt.instructions}` : ''}`,
+            content: `OMP 请求打开链接：${evt.url}${evt.instructions ? `\n\n${evt.instructions}` : ''}`,
             streaming: false,
           },
         ],
@@ -194,7 +194,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
 }
 
 function noticeText(evt: Extract<AgentEvent, { type: 'ui_notice' }>): string {
-  const icon = evt.level === 'error' ? '⚠️' : evt.level === 'warning' ? '⚠️' : 'ℹ️';
+  const icon = evt.level === 'error' ? '!' : evt.level === 'warning' ? '!' : '·';
   return `${icon} ${evt.message}`;
 }
 

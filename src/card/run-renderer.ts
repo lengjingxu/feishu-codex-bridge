@@ -40,7 +40,7 @@ export function renderCard(state: RunState): object {
     const mins = state.idleTimeoutMinutes ?? 0;
     elements.push(noteMd(`_⏱ ${mins} 分钟无响应,已自动终止_`));
   } else if (state.terminal === 'error' && state.errorMsg) {
-    elements.push(noteMd(`⚠️ agent 失败：${state.errorMsg}`));
+    elements.push(noteMd(`! agent 失败：${state.errorMsg}`));
   } else if (state.terminal === 'done' && elements.length === 0) {
     elements.push(noteMd('_（未返回内容）_'));
   }
@@ -94,7 +94,7 @@ function renderToolGroup(tools: ToolEntry[], finalized: boolean): object[] {
 }
 
 function reasoningPanel(content: string, active: boolean): object {
-  const title = active ? '🧠 **思考中**' : '🧠 **思考完成，点击查看**';
+  const title = active ? '**思考中**' : '**思考完成，点击查看**';
   return collapsiblePanel({
     title,
     expanded: active,
@@ -126,7 +126,7 @@ function toolPanel(tool: ToolEntry, expanded: boolean): object {
  */
 function collapsedToolSummary(tools: ToolEntry[], finalized: boolean): object {
   const suffix = finalized ? '（已结束）' : '';
-  const title = `☕ **${tools.length} 个工具调用${suffix}**`;
+  const title = `**${tools.length} 个工具调用${suffix}**`;
   const headerList = tools.map((t) => `- ${toolHeaderText(t)}`).join('\n');
   return {
     tag: 'collapsible_panel',
@@ -188,11 +188,11 @@ function stopButton(): object {
 function footerStatus(status: Exclude<FooterStatus, null>): object {
   const text =
     status === 'thinking'
-      ? '🧠 正在思考'
+      ? '正在思考'
       : status === 'tool_running'
-        ? '🧰 正在调用工具'
+        ? '正在调用工具'
         : status === 'waiting_input'
-          ? '🧩 等待用户交互'
+          ? '等待用户交互'
           : '✍️ 正在输出';
   return noteMd(text);
 }
@@ -210,7 +210,7 @@ function uiContextPanel(ui: UiState): object | undefined {
   if (ui.editorText) lines.push(`**编辑器内容**\n\`\`\`\n${truncate(ui.editorText, 1200)}\n\`\`\``);
   if (lines.length === 0) return undefined;
   return collapsiblePanel({
-    title: '🧩 **OMP 状态 / Widget**',
+    title: '**OMP 状态 / Widget**',
     expanded: true,
     border: 'blue',
     body: lines.join('\n\n'),
