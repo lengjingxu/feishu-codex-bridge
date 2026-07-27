@@ -17,6 +17,7 @@ import {
   projectWelcomeCard,
   projectsCard,
   sessionProgressCard,
+  sessionDetailCard,
   sessionsCard,
   statusCard,
   topicWelcomeCard,
@@ -241,7 +242,12 @@ async function commandFeedback(
     await reply(ctx, detail);
     return;
   }
-  await sendCommandCard(ctx, projectFeedbackCard(title, detail, buttons));
+  const inProjectChat = Boolean(ctx.projectBindings?.findProjectByChat(ctx.msg.chatId));
+  const home = inProjectChat
+    ? { text: '返回项目工作台', value: { cmd: 'welcome' } as Record<string, unknown> }
+    : { text: '返回项目列表', value: { cmd: 'projects' } as Record<string, unknown> };
+  const resultButtons = ctx.msg.threadId ? buttons : [...buttons, home];
+  await sendCommandCard(ctx, projectFeedbackCard(title, detail, resultButtons));
 }
 
 async function commandProgress(ctx: CommandContext, detail: string): Promise<void> {
@@ -270,7 +276,8 @@ async function handleNew(args: string, ctx: CommandContext): Promise<void> {
 }
 
 async function handleWelcome(_args: string, ctx: CommandContext): Promise<void> {
-  await sendCommandCard(ctx, welcomeCard());
+  const project = ctx.projectBindings?.findProjectByChat(ctx.msg.chatId);
+  await sendCommandCard(ctx, project ? projectWelcomeCard(project) : welcomeCard());
 }
 
 async function handleProjects(args: string, ctx: CommandContext): Promise<void> {
@@ -353,7 +360,7 @@ async function handleProject(args: string, ctx: CommandContext): Promise<void> {
     if (!project) return reply(ctx, '没有找到这个项目，请刷新项目列表。');
     const binding = ctx.projectBindings.projectFor(project.projectKey);
     const topicCount = ctx.projectBindings.topicsForProject(project.projectKey).length;
-    await commandFeedback(ctx, '项目状态', `项目：**${project.name}**\n路径：\`${project.cwd}\`\n项目群：${binding?.chatId ? '已创建' : '未创建'}\n已绑定话题：${topicCount} 个`, [
+    await commandFeedback(ctx, '项目状态', `项目：**${project.name}**\n项目群：${binding?.chatId ? '已创建' : '未创建'}\n已绑定话题：${topicCount} 个`, [
       { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
     ]);
     return;
@@ -435,31 +442,21 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
     const threadIdToShow = action.slice(7).trim();
     const found = (await ctx.agent.listSessions(project.cwd)).find((session) => session.threadId === threadIdToShow);
     if (!found) return reply(ctx, '没有找到这个会话。');
-    if (!ctx.agent.readSession) {
+    if (!ctx.agent.readSession || !ctx.fromCardAction) {
       return reply(ctx, `会话：**${found.name ?? '未命名'}**\n最近内容：${found.preview}\n状态：${sessionStatusText(found.status, found.activeFlags)}`);
     }
     const detail = await ctx.agent.readSession(threadIdToShow);
-    const activity = detail.recentActivity.length > 0
-      ? detail.recentActivity.map((item) => `- ${item.kind}：${truncateText(item.text, 160)}`).join('\n')
-      : '暂无可展示的历史内容。';
-    return reply(ctx, [
-      `会话：**${detail.name ?? '未命名'}**`,
-      `最近内容：${detail.preview}`,
-      `状态：${sessionStatusText(detail.status, detail.activeFlags)}`,
-      `来源：${detail.source ?? '未知'}`,
-      `工作目录：\`${detail.cwd}\``,
-      `历史轮次：${detail.turnCount}`,
-      '',
-      '**最近活动**',
-      activity,
-    ].join('\n'));
+    await sendCommandCard(ctx, sessionDetailCard(project.name, detail));
+    return;
   } else if (action.startsWith('archive ')) {
     const threadIdToArchive = action.slice(8).trim();
     const found = (await ctx.agent.listSessions(project.cwd)).find((session) => session.threadId === threadIdToArchive);
     if (!found) return reply(ctx, '没有找到这个会话，请刷新会话列表。');
     if (!ctx.agent.archiveSession) return reply(ctx, '当前 Codex 版本不支持归档会话。');
     await ctx.agent.archiveSession(threadIdToArchive);
-    await reply(ctx, '✅ 会话已归档。');
+    await commandFeedback(ctx, '会话已归档', `会话：**${found.name ?? found.preview.slice(0, 40) ?? '未命名会话'}**\n已从未归档列表中移除。`, [
+      { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
+    ]);
     return handleSessions('', ctx);
   } else {
     return handleSessions('', ctx);
@@ -485,7 +482,7 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
     createdBy: ctx.msg.senderId,
     updatedAt: Date.now(),
   });
-  await commandFeedback(ctx, '话题已创建', `会话：**${title}**\n已创建新的 Codex 话题。进入该话题后，直接发送需求即可。`, [
+  await commandFeedback(ctx, '话题已创建', `会话：**${title}**\n项目群中已出现以“项目名 · 会话名”命名的新话题。进入该话题后，直接发送需求即可。`, [
     { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
   ]);
 }
@@ -699,12 +696,13 @@ async function handleSync(args: string, ctx: CommandContext): Promise<void> {
   };
 
   try {
-    await ctx.sessionSync.refresh(read, update);
+    const detail = await ctx.sessionSync.refresh(read, update);
     if (autoMode) {
       ctx.sessionSync.start(ctx.scope, read, update, {
         intervalMs: 5_000,
         onError: (error) => log.warn('session-sync', 'poll-failed', { scope: ctx.scope, error: String(error) }),
       });
+      await update(detail);
     }
   } catch (error) {
     log.fail('session-sync', error, { scope: ctx.scope });
@@ -715,8 +713,12 @@ async function handleSync(args: string, ctx: CommandContext): Promise<void> {
 async function handleStop(_args: string, ctx: CommandContext): Promise<void> {
   const ok = ctx.activeRuns.interrupt(ctx.scope);
   log.info('command', 'stop', { interrupted: ok });
-  // No reply: if there was a run, its in-flight render loop will mark the
-  // card as 'interrupted' and re-render (`_⏹ 已被中断_`).
+  await commandFeedback(
+    ctx,
+    ok ? '停止请求已发送' : '当前没有执行中的任务',
+    ok ? '正在等待 Codex 停止当前任务。' : '当前话题没有正在执行的任务，可以直接发送新的需求。',
+    [{ text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' }],
+  );
 }
 
 async function handleTimeout(args: string, ctx: CommandContext): Promise<void> {

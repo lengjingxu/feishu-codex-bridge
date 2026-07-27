@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectWelcomeCard, projectsCard, sessionProgressCard, sessionsCard, topicTitle, topicWelcomeCard, welcomeCard } from './templates';
+import { projectWelcomeCard, projectsCard, sessionDetailCard, sessionProgressCard, sessionsCard, topicTitle, topicWelcomeCard, welcomeCard } from './templates';
 import type { SessionDetail } from '../project/types';
 
 function text(card: object): string {
@@ -16,12 +16,15 @@ describe('project-first Feishu cards', () => {
 
   it('renders empty and populated project/session states', () => {
     expect(text(projectsCard([]))).toContain('暂时没有可用项目');
-    expect(text(projectsCard([{ projectKey: 'p1', name: '示例项目', cwd: '/tmp/demo', hostId: '本机' }]))).toContain('创建项目群');
+    const unboundProject = text(projectsCard([{ projectKey: 'p1', name: '示例项目', cwd: '/tmp/demo', hostId: '本机' }]));
+    expect(unboundProject).toContain('创建项目群');
+    expect(unboundProject).not.toContain('查看会话');
+    expect(text(projectsCard([{ projectKey: 'p1', name: '示例项目', cwd: '/tmp/demo', hostId: '本机', chatId: 'chat-1' }]))).toContain('查看会话');
     expect(text(sessionsCard('示例项目', []))).toContain('新建会话');
     const sessions = text(sessionsCard('示例项目', [{ threadId: 'thread-1', preview: '修复卡片', status: 'idle', updatedAt: Date.now() }], 'cursor-2'));
     expect(sessions).toContain('继续此会话');
     expect(sessions).toContain('加载更多');
-    expect(sessions).toContain('归档');
+    expect(sessions).not.toContain('"content":"归档"');
     const metadata = text(sessionsCard('示例项目', [{ threadId: 'thread-2', preview: '等待输入', status: 'active', activeFlags: ['waitingOnUserInput'], source: 'vscode', forkedFromId: 'thread-0', updatedAt: Date.now() }]));
     expect(metadata).toContain('等待输入');
     expect(metadata).not.toContain('VS Code');
@@ -57,7 +60,17 @@ describe('project-first Feishu cards', () => {
     };
     const card = text(sessionProgressCard('示例项目', detail));
     expect(card).toContain('刷新进度');
-    expect(card).toContain('开始自动同步');
-    expect(text(sessionProgressCard('示例项目', detail, true))).toContain('停止自动同步');
+    expect(card).toContain('开启自动刷新');
+    expect(text(sessionProgressCard('示例项目', detail, true))).toContain('关闭自动刷新');
+  });
+
+  it('moves archive into session details instead of the main list', () => {
+    const detail: SessionDetail = {
+      threadId: 'thread-1', name: '修复卡片', preview: '最新进度', cwd: '/tmp/project', status: 'idle', updatedAt: Date.now(),
+      turnCount: 2, recentActivity: [{ kind: '助手', text: '已完成' }],
+    };
+    const card = text(sessionDetailCard('示例项目', detail));
+    expect(card).toContain('归档会话');
+    expect(card).toContain('返回会话列表');
   });
 });
