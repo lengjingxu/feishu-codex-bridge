@@ -16,6 +16,10 @@ import {
   responseFromOmpUiAction,
 } from './omp-ui';
 import type { WorkspaceStore } from '../workspace/store';
+import type { ProjectCatalog } from '../project/catalog';
+import type { ProjectBindingStore } from '../project/types';
+import { isThreadScoped } from '../bot/scope';
+import { lookupMessageThreadId } from '../bot/thread';
 
 /** Marker key on a button's value object that flags the cardAction as
  * a callback that should be forwarded back to the agent instead of dispatched
@@ -35,6 +39,8 @@ export interface CardDispatchDeps {
   controls: Controls;
   pending: PendingQueue;
   chatModeCache: ChatModeCache;
+  projectCatalog?: ProjectCatalog;
+  projectBindings?: ProjectBindingStore;
 }
 
 export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
@@ -109,6 +115,8 @@ export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
     controls: deps.controls,
     formValue,
     fromCardAction: true,
+    projectCatalog: deps.projectCatalog,
+    projectBindings: deps.projectBindings,
   };
 
   const [name, ...rest] = cmd.split('.');
@@ -128,36 +136,15 @@ async function resolveScope(
 ): Promise<{ scope: string; threadId: string | undefined; mode: 'p2p' | 'group' | 'topic' }> {
   const chatId = deps.evt.chatId;
   const mode = await deps.chatModeCache.resolve(deps.channel, chatId);
-  if (mode !== 'topic') {
-    return { scope: chatId, threadId: undefined, mode };
-  }
-  // Topic group — need the carrier message's thread_id to compose scope.
-  // One API call per click; could cache by messageId if it ever becomes hot.
+  const projectChat = Boolean(deps.projectBindings?.findProjectByChat(chatId));
+  // The carrier message is the reliable source of thread_id. A thread-enabled
+  // private group is still returned as `group` by chat.get, so only checking
+  // the cached mode loses the project/session binding on card clicks.
   const threadId = await lookupMessageThreadId(deps.channel, deps.evt.messageId);
-  if (!threadId) {
-    // Fall back to plain chatId. Better to land in the chat's "default"
-    // scope than fail the click silently.
+  if (!isThreadScoped(mode, threadId, projectChat)) {
     return { scope: chatId, threadId: undefined, mode };
   }
   return { scope: `${chatId}:${threadId}`, threadId, mode };
-}
-
-async function lookupMessageThreadId(
-  channel: LarkChannel,
-  messageId: string,
-): Promise<string | undefined> {
-  try {
-    const r = (await channel.rawClient.im.v1.message.get({
-      path: { message_id: messageId },
-    })) as { data?: { items?: { thread_id?: string }[] } };
-    return r?.data?.items?.[0]?.thread_id;
-  } catch (err) {
-    log.warn('cardAction', 'thread-id-lookup-failed', {
-      messageId,
-      err: err instanceof Error ? err.message : String(err),
-    });
-    return undefined;
-  }
 }
 
 function forwardToAgent(

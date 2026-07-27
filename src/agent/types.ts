@@ -124,4 +124,12 @@ export interface AgentAdapter {
   readonly displayName: string;
   isAvailable(): Promise<boolean>;
   run(opts: AgentRunOptions): AgentRun;
+  listSessions?(cwd: string): Promise<import('../project/types').SessionSummary[]>;
+  /** List recent non-archived sessions across all project directories. */
+  listRecentSessions?(): Promise<import('../project/types').SessionSummary[]>;
+  listSessionPage?(cwd: string, cursor?: string): Promise<import('../project/types').SessionPage>;
+  listProjectRoots?(): Promise<string[]>;
+  readSession?(threadId: string): Promise<import('../project/types').SessionDetail>;
+  createSession?(cwd: string): Promise<import('../project/types').SessionSummary>;
+  archiveSession?(threadId: string): Promise<void>;
 }

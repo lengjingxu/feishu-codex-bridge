@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { paths } from './paths';
 
 export type TenantBrand = 'feishu' | 'lark';
@@ -92,6 +93,12 @@ export interface AppAccess {
 }
 
 export interface AppPreferences {
+  /** Selects the agent runtime. OMP remains the backwards-compatible default. */
+  agentBackend?: 'omp' | 'codex';
+  /** Codex executable used for the app-server transport. */
+  codexAppServerBinary?: string;
+  /** Local project roots exposed by the Feishu project picker. */
+  projectRoots?: string[];
   /** OMP executable name or path. Default: omp. */
   ompBinary?: string;
   /** Optional OMP model passed as `--model`. Empty means OMP config decides. */
@@ -211,6 +218,35 @@ export function getOmpBinary(cfg: AppConfig): string {
   const raw = cfg.preferences?.ompBinary ?? cfg.preferences?.codexBinary;
   if (typeof raw !== 'string' || raw.trim() === '') return 'omp';
   return raw.trim();
+}
+
+export function getAgentBackend(cfg: AppConfig): 'omp' | 'codex' {
+  return cfg.preferences?.agentBackend === 'codex' ? 'codex' : 'omp';
+}
+
+export function getCodexAppServerBinary(cfg: AppConfig): string {
+  const raw = cfg.preferences?.codexAppServerBinary;
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : 'codex';
+}
+
+/**
+ * Use the Codex runtime that belongs to the installed desktop app when the
+ * operator did not override it. The PATH `codex` on macOS can be an older
+ * Homebrew CLI whose app-server cannot understand the desktop model cache.
+ */
+export function resolveCodexAppServerBinary(cfg: AppConfig): string {
+  const configured = getCodexAppServerBinary(cfg);
+  if (configured !== 'codex') return configured;
+  const fromEnv = process.env.CODEX_CLI_PATH?.trim();
+  if (fromEnv) return fromEnv;
+  const desktopBinary = '/Applications/ChatGPT.app/Contents/Resources/codex';
+  return existsSync(desktopBinary) ? desktopBinary : configured;
+}
+
+export function getProjectRoots(cfg: AppConfig): string[] {
+  const roots = cfg.preferences?.projectRoots;
+  if (!Array.isArray(roots)) return [];
+  return roots.filter((root): root is string => typeof root === 'string' && root.trim() !== '').map((root) => root.trim());
 }
 
 export function getOmpModel(cfg: AppConfig): string | undefined {

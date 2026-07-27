@@ -19,10 +19,12 @@ import {
   type RunState,
 } from '../card/run-state';
 import { renderText } from '../card/text-renderer';
+import { projectWelcomeCard, welcomeCard } from '../card/templates';
 import { tryHandleCommand, type Controls } from '../commands';
 import type { AppConfig } from '../config/schema';
 import {
   getAgentStopGraceMs,
+  getAgentBackend,
   getOmpModel,
   getMaxConcurrentRuns,
   getMessageReplyMode,
@@ -37,6 +39,8 @@ import { log, withTrace } from '../core/logger';
 import { MediaCache, type LocalAttachment } from '../media/cache';
 import type { SessionStore } from '../session/store';
 import type { WorkspaceStore } from '../workspace/store';
+import type { ProjectCatalog } from '../project/catalog';
+import type { ProjectBindingStore } from '../project/types';
 import { ActiveRuns, type RunHandle } from './active-runs';
 import { ChatModeCache, type ChatMode } from './chat-mode-cache';
 import { handleCommentMention } from './comments';
@@ -48,6 +52,7 @@ import { PendingQueue } from './pending-queue';
 import { ProcessPool } from './process-pool';
 import { fetchQuotedContext, renderQuotedBlock, type QuotedContext } from './quote';
 import { addWorkingReaction, removeReaction } from './reaction';
+import { isThreadScoped } from './scope';
 
 const DEBOUNCE_MS = 600;
 
@@ -119,10 +124,12 @@ export interface StartChannelDeps {
   sessions: SessionStore;
   workspaces: WorkspaceStore;
   controls: Controls;
+  projectCatalog?: ProjectCatalog;
+  projectBindings?: ProjectBindingStore;
 }
 
 export async function startChannel(deps: StartChannelDeps): Promise<BridgeChannel> {
-  const { cfg, agent, sessions, workspaces, controls } = deps;
+  const { cfg, agent, sessions, workspaces, controls, projectCatalog, projectBindings } = deps;
   const activeRuns = new ActiveRuns();
   // ChatModeCache stays per-bridge-instance — invalidated on restart along
   // with everything else. Topic-mode chats only need one chat.get() call ever.
@@ -206,6 +213,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           controls,
           scope,
           mode,
+          projectBindings,
         });
       } catch (err) {
         log.fail('flush', err);
@@ -234,6 +242,8 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           msg,
           controls,
           chatModeCache,
+          projectCatalog,
+          projectBindings,
         }),
       ).catch((err) => log.fail('intake', err));
     },
@@ -252,6 +262,8 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           controls,
           pending,
           chatModeCache,
+          projectCatalog,
+          projectBindings,
         });
       }).catch((err) => log.fail('cardAction', err));
     },
@@ -328,7 +340,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
       pending.cancelAll();
       await channel.disconnect();
       await activeRuns.stopAll();
-      await Promise.allSettled([sessions.flush(), workspaces.flush()]);
+      await Promise.allSettled([sessions.flush(), workspaces.flush(), projectBindings?.flush()]);
     },
   };
 }
@@ -344,6 +356,8 @@ interface IntakeDeps {
   msg: NormalizedMessage;
   controls: Controls;
   chatModeCache: ChatModeCache;
+  projectCatalog?: ProjectCatalog;
+  projectBindings?: ProjectBindingStore;
 }
 
 async function intakeMessage(deps: IntakeDeps): Promise<void> {
@@ -358,18 +372,25 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     msg,
     controls,
     chatModeCache,
+    projectCatalog,
+    projectBindings,
   } = deps;
   const preview = msg.content.length > 80 ? `${msg.content.slice(0, 80)}…` : msg.content;
   // Resolve scope (and underlying chat mode) once at intake — every
   // downstream consumer keys off these.
   const chatMode = await chatModeCache.resolve(channel, msg.chatId);
-  const scope = chatMode === 'topic' && msg.threadId
+  const project = projectBindings?.findProjectByChat(msg.chatId);
+  const threadScoped = isThreadScoped(chatMode, msg.threadId, Boolean(project));
+  const topicBinding = findTopicBinding(projectBindings, msg.chatId, msg.threadId, msg.rootId);
+  const scope = threadScoped
     ? `${msg.chatId}:${msg.threadId}`
     : msg.chatId;
   log.info('intake', 'enter', {
     scope,
     chatType: msg.chatType,
     chatMode,
+    threadId: msg.threadId,
+    threadScoped,
     sender: msg.senderId,
     preview,
     resources: msg.resources.length,
@@ -407,7 +428,8 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
   if (
     msg.chatType !== 'p2p' &&
     getRequireMentionInGroup(controls.cfg) &&
-    !msg.mentionedBot
+    !msg.mentionedBot &&
+    !project
   ) {
     log.info('intake', 'skip-no-mention', { scope, chatType: msg.chatType });
     return;
@@ -423,11 +445,33 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     agent,
     activeRuns,
     controls,
+    projectCatalog,
+    projectBindings,
   });
   if (handled) {
     const dropped = pending.cancel(scope);
     log.info('intake', 'command', { scope, droppedPending: dropped.length });
     return;
+  }
+
+  // Codex project mode intentionally does not send unbound DM or project-group
+  // messages to an arbitrary working directory. Guide the user to the card
+  // flow instead; ordinary topic messages are allowed through below.
+  if (getAgentBackend(controls.cfg) === 'codex') {
+    if (msg.chatType === 'p2p' || (project && !msg.threadId)) {
+      await channel.send(msg.chatId, { card: project ? projectWelcomeCard(project) : welcomeCard() }, { replyTo: msg.messageId });
+      pending.cancel(scope);
+      return;
+    }
+    if (project && msg.threadId && !topicBinding) {
+      await channel.send(
+        msg.chatId,
+        { markdown: '这个话题还没有绑定 Codex 会话。请回到项目群，点击“查看会话”，再选择“继续此会话”或“新建会话”。' },
+        { replyTo: msg.messageId, replyInThread: true },
+      );
+      pending.cancel(scope);
+      return;
+    }
   }
 
   if (await submitToActiveRun({ channel, activeRuns, media, msg, scope })) {
@@ -473,11 +517,13 @@ interface RunBatchDeps {
   controls: Controls;
   scope: string;
   mode: ChatMode;
+  projectBindings?: ProjectBindingStore;
 }
 
 interface AgentStreamHooks {
   onUiRequest(request: AgentUiRequest): Promise<void>;
   onUiCancel(targetId: string): Promise<void>;
+  onSystem?(sessionId: string, cwd?: string): Promise<void>;
 }
 
 async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
@@ -492,6 +538,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     controls,
     scope,
     mode,
+    projectBindings,
   } = deps;
   if (batch.length === 0) return;
   const firstMsg = batch[0];
@@ -539,8 +586,11 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   const prompt = buildPrompt(batch, attachments, quotes);
   log.info('prompt', 'built', { promptChars: prompt.length, quotes: quotes.length });
 
-  const cwd = workspaces.cwdFor(scope) ?? homedir();
-  const resumeFrom = sessions.resumeFor(scope, cwd);
+  const project = projectBindings?.findProjectByChat(chatId);
+  const topicBinding = findTopicBinding(projectBindings, chatId, threadId, firstMsg.rootId);
+  const threadScoped = isThreadScoped(mode, threadId, Boolean(project));
+  const cwd = project?.cwd ?? workspaces.cwdFor(scope) ?? homedir();
+  const resumeFrom = topicBinding?.codexThreadId ?? sessions.resumeFor(scope, cwd);
   if (resumeFrom) {
     log.info('session', 'resume', { sessionId: resumeFrom, cwd });
   } else {
@@ -601,11 +651,20 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   // topic discussion breaks visually.
   const sendOpts = {
     replyTo: lastMsg.messageId,
-    ...(mode === 'topic' && threadId ? { replyInThread: true } : {}),
+    ...(threadScoped ? { replyInThread: true } : {}),
   };
 
   const uiCards = new Map<string, { messageId: string; title: string }>();
   const uiHooks: AgentStreamHooks = {
+    async onSystem(sessionId) {
+      if (!topicBinding || sessionId === topicBinding.codexThreadId || !projectBindings) return;
+      await projectBindings.updateTopicSession(topicBinding.chatId, topicBinding.topicId, sessionId);
+      log.info('session', 'topic-rebound', {
+        topicId: topicBinding.topicId,
+        previousSessionId: topicBinding.codexThreadId,
+        sessionId,
+      });
+    },
     async onUiRequest(request) {
       try {
         const existing = uiCards.get(request.id);
@@ -690,6 +749,19 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   }
 }
 
+function findTopicBinding(
+  bindings: ProjectBindingStore | undefined,
+  chatId: string,
+  threadId: string | undefined,
+  rootId: string | undefined,
+): import('../project/types').TopicBinding | undefined {
+  if (!bindings) return undefined;
+  // New bindings use the real `omt_...` thread id. The root-id fallback keeps
+  // topics created by older bridge versions usable after this migration.
+  return (threadId ? bindings.findTopic(chatId, threadId) : undefined)
+    ?? (rootId ? bindings.findTopic(chatId, rootId) : undefined);
+}
+
 /**
  * Drive the agent's event stream into a stateful RunState, calling `flush`
  * on every state transition. Used by both card and markdown reply modes —
@@ -766,6 +838,7 @@ async function processAgentStream(
       if (evt.type === 'system') {
         if (evt.sessionId) {
           const effectiveCwd = evt.cwd ?? cwd;
+          await hooks?.onSystem?.(evt.sessionId, effectiveCwd);
           sessions.set(scope, evt.sessionId, effectiveCwd);
           log.info('session', 'set', { sessionId: evt.sessionId });
         }
@@ -916,4 +989,3 @@ function stripAttachmentRefs(text: string, fileKeys: string[]): string {
   }
   return out.replace(/\n{3,}/g, '\n\n');
 }
-
