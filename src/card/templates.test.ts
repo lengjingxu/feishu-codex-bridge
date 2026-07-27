@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectWelcomeCard, projectsCard, sessionProgressCard, sessionsCard, topicWelcomeCard, welcomeCard } from './templates';
+import { projectWelcomeCard, projectsCard, sessionProgressCard, sessionsCard, topicTitle, topicWelcomeCard, welcomeCard } from './templates';
 import type { SessionDetail } from '../project/types';
 
 function text(card: object): string {
@@ -32,8 +32,16 @@ describe('project-first Feishu cards', () => {
     const project = text(projectWelcomeCard({ name: '示例项目', cwd: '/tmp/demo' }));
     const topic = text(topicWelcomeCard('示例项目', '修复卡片', '/tmp/demo'));
     expect(project).toContain('项目已连接');
-    expect(topic).toContain('会话已连接');
+    expect(topic).toContain('示例项目 · 修复卡片');
     expect(topic).not.toContain('thread_id');
+  });
+
+  it('builds useful topic titles for unnamed, generic and long sessions', () => {
+    expect(topicTitle('示例项目', '')).toBe('示例项目 · 新会话');
+    expect(topicTitle('示例项目', 'omp 会话已连接')).toBe('示例项目 · 新会话');
+    expect(topicTitle('示例项目', '  修复   飞书  ')).toBe('示例项目 · 修复 飞书');
+    expect(Array.from(topicTitle('项目', '很长的会话名称'.repeat(20))).length).toBeLessThanOrEqual(80);
+    expect(topicTitle('项目', '很长的会话名称'.repeat(20)).endsWith('…')).toBe(true);
   });
 
   it('renders manual and automatic session sync actions', () => {

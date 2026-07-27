@@ -169,8 +169,10 @@ function sourceText(source: string): string {
 }
 
 export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd: string): object {
-  return shell('✅ 会话已连接', [
-    divMd(`项目：**${escapeMd(projectName)}**\n会话：**${escapeMd(sessionTitle)}**\n工作目录：\`${escapeCode(cwd)}\`\n\n现在可以直接在这个话题中输入中文需求。`),
+  const displayProjectName = cleanTopicPart(projectName, '未命名项目');
+  const displaySessionTitle = cleanTopicPart(sessionTitle, '新会话');
+  return shell(topicTitle(displayProjectName, displaySessionTitle), [
+    divMd(`项目：**${escapeMd(displayProjectName)}**\n会话：**${escapeMd(displaySessionTitle)}**\n工作目录：\`${escapeCode(cwd)}\`\n\n现在可以直接在这个话题中输入中文需求。`),
     actions([
       { text: '📊 查看状态', value: { cmd: 'status' } },
       { text: '🔄 刷新进度', value: { cmd: 'sync' }, style: 'primary' },
@@ -181,6 +183,28 @@ export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd:
       { text: '💡 帮助', value: { cmd: 'help' } },
     ]),
   ]);
+}
+
+/**
+ * Feishu uses the root message title when displaying a topic in the topic
+ * list. Keep it useful and compact instead of showing the same connection
+ * status for every Codex session.
+ */
+export function topicTitle(projectName: string, sessionTitle: string): string {
+  const project = cleanTopicPart(projectName, '未命名项目');
+  const session = cleanTopicPart(sessionTitle, '新会话');
+  return truncateTopicTitle(`${project} · ${session}`, 80);
+}
+
+function cleanTopicPart(value: string, fallback: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (!normalized || /^(?:omp\s*)?(?:✅\s*)?会话已连接$/i.test(normalized)) return fallback;
+  return normalized;
+}
+
+function truncateTopicTitle(value: string, maxLength: number): string {
+  const chars = Array.from(value);
+  return chars.length <= maxLength ? value : `${chars.slice(0, maxLength - 1).join('')}…`;
 }
 
 function formatRelative(timestamp: number): string {
