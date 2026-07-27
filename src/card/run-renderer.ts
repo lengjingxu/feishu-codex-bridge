@@ -35,7 +35,7 @@ export function renderCard(state: RunState): object {
   }
 
   if (state.terminal === 'interrupted') {
-    elements.push(noteMd('_⏹ 已被中断_'));
+    elements.push(noteMd('_已被中断_'));
   } else if (state.terminal === 'idle_timeout') {
     const mins = state.idleTimeoutMinutes ?? 0;
     elements.push(noteMd(`_⏱ ${mins} 分钟无响应,已自动终止_`));
@@ -179,7 +179,7 @@ function noteMd(content: string): object {
 function stopButton(): object {
   return {
     tag: 'button',
-    text: { tag: 'plain_text', content: '⏹ 终止' },
+    text: { tag: 'plain_text', content: '终止任务' },
     type: 'danger',
     behaviors: [{ type: 'callback', value: { cmd: 'stop' } }],
   };
@@ -193,7 +193,7 @@ function footerStatus(status: Exclude<FooterStatus, null>): object {
         ? '正在调用工具'
         : status === 'waiting_input'
           ? '等待用户交互'
-          : '✍️ 正在输出';
+          : '正在输出';
   return noteMd(text);
 }
 

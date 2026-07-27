@@ -55,6 +55,7 @@ import { lookupMessageThreadId } from '../bot/thread';
 import type { ProjectCatalog } from '../project/catalog';
 import type { Project, ProjectBindingStore } from '../project/types';
 import type { SessionSyncManager } from '../session/sync';
+import { showProjectWorkbench } from '../project/workbench';
 
 export interface Controls {
   /** Restart the bridge in-process: disconnect WS, kill OMP runs, reload
@@ -277,6 +278,10 @@ async function handleNew(args: string, ctx: CommandContext): Promise<void> {
 
 async function handleWelcome(_args: string, ctx: CommandContext): Promise<void> {
   const project = ctx.projectBindings?.findProjectByChat(ctx.msg.chatId);
+  if (project && ctx.projectBindings && !ctx.fromCardAction) {
+    await showProjectWorkbench(ctx.channel, ctx.projectBindings, project);
+    return;
+  }
   await sendCommandCard(ctx, project ? projectWelcomeCard(project) : welcomeCard());
 }
 
@@ -390,7 +395,8 @@ async function openProject(projectKey: string, ctx: CommandContext): Promise<voi
     });
     ctx.projectBindings.registerProjects?.([project]);
     await ctx.projectBindings.bindProject(projectKey, created.chatId);
-    await ctx.channel.send(created.chatId, { card: projectWelcomeCard(project) });
+    const boundProject = ctx.projectBindings.projectFor(projectKey);
+    if (boundProject) await showProjectWorkbench(ctx.channel, ctx.projectBindings, boundProject);
     await commandFeedback(ctx, '项目群已创建', `项目：**${project.name}**\n项目群已经准备好，请进入新群后点击“查看会话”。`, [
       { text: '查看会话', value: { cmd: 'project.sessions', arg: projectKey }, style: 'primary' },
     ]);
