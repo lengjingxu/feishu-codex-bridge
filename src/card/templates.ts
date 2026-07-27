@@ -170,18 +170,21 @@ export function sessionProgressCard(projectName: string, detail: SessionDetail, 
     }).join('\n')
     : '暂无可展示的最新活动。';
   const status = sessionStatusText(detail.status, detail.activeFlags);
+  const running = detail.status === 'active';
+  const progressActions: ButtonSpec[] = [
+    { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
+    ...(running ? [{ text: '停止任务', value: { cmd: 'stop' }, style: 'danger' as const }] : []),
+    autoSync
+      ? { text: '关闭自动刷新', value: { cmd: 'sync.stop' }, style: 'danger' as const }
+      : { text: '开启自动刷新', value: { cmd: 'sync.auto' } },
+    { text: '查看状态', value: { cmd: 'status' } },
+  ];
   return shell('Codex 最新进度', [
     divMd(`项目：**${escapeMd(projectName)}**\n状态：**${status}**\n最近更新：${formatRelative(detail.updatedAt)}${autoSync ? '\n自动刷新：已开启（每 5 秒）' : ''}`),
     HR,
     divMd(activity),
     HR,
-    actions([
-      { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
-      autoSync
-        ? { text: '关闭自动刷新', value: { cmd: 'sync.stop' }, style: 'danger' }
-        : { text: '开启自动刷新', value: { cmd: 'sync.auto' } },
-      { text: '查看状态', value: { cmd: 'status' } },
-    ]),
+    actions(progressActions),
   ]);
 }
 
@@ -201,7 +204,6 @@ export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd:
     divMd('当前位置：Codex 工作话题。这里用于实际编程对话，之后直接发送需求即可。'),
     actions([
       { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
-      { text: '停止任务', value: { cmd: 'stop' }, style: 'danger' },
     ]),
     actions([
       { text: '切换会话', value: { cmd: 'sessions' } },

@@ -61,7 +61,10 @@ describe('project-first Feishu cards', () => {
     const card = text(sessionProgressCard('示例项目', detail));
     expect(card).toContain('刷新进度');
     expect(card).toContain('开启自动刷新');
+    expect(card).toContain('停止任务');
     expect(text(sessionProgressCard('示例项目', detail, true))).toContain('关闭自动刷新');
+    const idle = { ...detail, status: 'idle' as const };
+    expect(text(sessionProgressCard('示例项目', idle))).not.toContain('"content":"停止任务"');
   });
 
   it('moves archive into session details instead of the main list', () => {

@@ -4,6 +4,8 @@ export interface Project {
   cwd: string;
   hostId?: string;
   chatId?: string;
+  /** Root Feishu message used as the single project-group workbench. */
+  homeMessageId?: string;
 }
 
 export interface SessionSummary {
@@ -48,6 +50,7 @@ export interface TopicBinding {
 export interface ProjectBindingStore {
   registerProjects?(projects: Project[]): void;
   bindProject(projectKey: string, chatId: string): Promise<void>;
+  bindProjectHomeMessage(projectKey: string, messageId: string): Promise<void>;
   bindTopic(binding: TopicBinding): Promise<void>;
   updateTopicSession(chatId: string, topicId: string, codexThreadId: string): Promise<void>;
   findProjectByChat(chatId: string): Project | undefined;

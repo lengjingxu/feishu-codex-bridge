@@ -19,7 +19,7 @@ import {
   type RunState,
 } from '../card/run-state';
 import { renderText } from '../card/text-renderer';
-import { projectWelcomeCard, welcomeCard } from '../card/templates';
+import { welcomeCard } from '../card/templates';
 import { tryHandleCommand, type Controls } from '../commands';
 import type { AppConfig } from '../config/schema';
 import {
@@ -54,6 +54,7 @@ import { fetchQuotedContext, renderQuotedBlock, type QuotedContext } from './quo
 import { addWorkingReaction, removeReaction } from './reaction';
 import { isThreadScoped } from './scope';
 import { SessionSyncManager } from '../session/sync';
+import { showProjectWorkbench } from '../project/workbench';
 
 const DEBOUNCE_MS = 600;
 
@@ -467,7 +468,8 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
   // flow instead; ordinary topic messages are allowed through below.
   if (getAgentBackend(controls.cfg) === 'codex') {
     if (msg.chatType === 'p2p' || (project && !msg.threadId)) {
-      await channel.send(msg.chatId, { card: project ? projectWelcomeCard(project) : welcomeCard() }, { replyTo: msg.messageId });
+      if (project && projectBindings) await showProjectWorkbench(channel, projectBindings, project);
+      else await channel.send(msg.chatId, { card: welcomeCard() }, { replyTo: msg.messageId });
       pending.cancel(scope);
       return;
     }

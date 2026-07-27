@@ -20,6 +20,7 @@ describe('JsonProjectBindingStore', () => {
     await store.load();
     store.registerProjects?.([project]);
     await store.bindProject(project.projectKey, 'chat-1');
+    await store.bindProjectHomeMessage(project.projectKey, 'message-home');
     await store.bindTopic({
       chatId: 'chat-1',
       topicId: 'topic-1',
@@ -33,6 +34,7 @@ describe('JsonProjectBindingStore', () => {
     const reloaded = new JsonProjectBindingStore(path);
     await reloaded.load();
     expect(reloaded.findProjectByChat('chat-1')?.projectKey).toBe(project.projectKey);
+    expect(reloaded.findProjectByChat('chat-1')?.homeMessageId).toBe('message-home');
     expect(reloaded.findTopic('chat-1', 'topic-1')?.codexThreadId).toBe('thread-1');
     expect(reloaded.findTopicByThread('thread-1')?.topicId).toBe('topic-1');
     expect(JSON.parse(await readFile(path, 'utf8')).version).toBe(1);

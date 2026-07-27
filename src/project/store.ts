@@ -47,8 +47,15 @@ export class JsonProjectBindingStore implements ProjectBindingStore {
   registerProjects(projects: Project[]): void {
     for (const project of projects) {
       const existing = this.data.projects[project.projectKey];
-      this.data.projects[project.projectKey] = { ...project, chatId: existing?.chatId };
+      this.data.projects[project.projectKey] = { ...project, chatId: existing?.chatId, homeMessageId: existing?.homeMessageId };
     }
+    this.schedulePersist();
+  }
+
+  async bindProjectHomeMessage(projectKey: string, messageId: string): Promise<void> {
+    const current = this.data.projects[projectKey];
+    if (!current) throw new Error(`project not found: ${projectKey}`);
+    this.data.projects[projectKey] = { ...current, homeMessageId: messageId };
     this.schedulePersist();
   }
 
