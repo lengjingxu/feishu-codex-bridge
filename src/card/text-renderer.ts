@@ -27,7 +27,7 @@ export function renderText(state: RunState): string {
     const mins = state.idleTimeoutMinutes ?? 0;
     parts.push(`_⏱ ${mins} 分钟无响应,已自动终止_`);
   } else if (state.terminal === 'error' && state.errorMsg) {
-    parts.push(`⚠️ agent 失败:${state.errorMsg}`);
+    parts.push(`! agent 失败：${state.errorMsg}`);
   } else if (state.terminal === 'running' && state.footer) {
     parts.push(footerLine(state.footer));
   }
@@ -53,9 +53,9 @@ function toolLine(tool: ToolEntry): string {
 }
 
 function footerLine(status: 'thinking' | 'tool_running' | 'streaming' | 'waiting_input'): string {
-  if (status === 'thinking') return '_🧠 正在思考…_';
-  if (status === 'tool_running') return '_🧰 正在调用工具…_';
-  if (status === 'waiting_input') return '_🧩 等待用户交互…_';
+  if (status === 'thinking') return '_正在思考…_';
+  if (status === 'tool_running') return '_正在调用工具…_';
+  if (status === 'waiting_input') return '_等待用户交互…_';
   return '_✍️ 正在输出…_';
 }
 
@@ -67,5 +67,5 @@ function renderUiContext(ui: UiState): string {
     lines.push(`- ${key}: ${(widget.lines ?? []).join(' / ')}`);
   }
   if (ui.editorText) lines.push(`- 编辑器内容：${ui.editorText.slice(0, 300)}`);
-  return lines.length > 0 ? `> 🧩 OMP 状态\n${lines.join('\n')}` : '';
+  return lines.length > 0 ? `> OMP 状态\n${lines.join('\n')}` : '';
 }

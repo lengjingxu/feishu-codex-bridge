@@ -13,6 +13,7 @@ import { configCancelledCard, configFormCard, configSavedCard } from '../card/co
 import { forgetManagedCard, sendManagedCard, updateManagedCard } from '../card/managed';
 import {
   helpCard,
+  projectFeedbackCard,
   projectWelcomeCard,
   projectsCard,
   sessionProgressCard,
@@ -217,6 +218,37 @@ async function reply(ctx: CommandContext, markdown: string): Promise<void> {
   }
 }
 
+/** Replace the clicked card so the group keeps one visible source of truth. */
+async function sendCommandCard(ctx: CommandContext, card: object): Promise<void> {
+  if (ctx.fromCardAction) {
+    try {
+      await ctx.channel.updateCard(ctx.msg.messageId, card);
+      return;
+    } catch (err) {
+      log.warn('command', 'card-update-failed', { err: String(err) });
+    }
+  }
+  await ctx.channel.send(ctx.msg.chatId, { card }, { replyTo: ctx.msg.messageId });
+}
+
+async function commandFeedback(
+  ctx: CommandContext,
+  title: string,
+  detail: string,
+  buttons: Array<{ text: string; value: Record<string, unknown>; style?: 'primary' | 'danger' | 'default' }>,
+): Promise<void> {
+  if (!ctx.fromCardAction) {
+    await reply(ctx, detail);
+    return;
+  }
+  await sendCommandCard(ctx, projectFeedbackCard(title, detail, buttons));
+}
+
+async function commandProgress(ctx: CommandContext, detail: string): Promise<void> {
+  if (!ctx.fromCardAction) return;
+  await sendCommandCard(ctx, projectFeedbackCard('正在处理', `↻ ${detail}`));
+}
+
 function expandTilde(p: string): string {
   if (p === '~') return homedir();
   if (p.startsWith('~/')) return `${homedir()}${p.slice(1)}`;
@@ -238,7 +270,7 @@ async function handleNew(args: string, ctx: CommandContext): Promise<void> {
 }
 
 async function handleWelcome(_args: string, ctx: CommandContext): Promise<void> {
-  await ctx.channel.send(ctx.msg.chatId, { card: welcomeCard() }, { replyTo: ctx.msg.messageId });
+  await sendCommandCard(ctx, welcomeCard());
 }
 
 async function handleProjects(args: string, ctx: CommandContext): Promise<void> {
@@ -246,6 +278,7 @@ async function handleProjects(args: string, ctx: CommandContext): Promise<void> 
     await reply(ctx, '当前 Bridge 尚未启用项目模式，请先在配置中将 agentBackend 设置为 codex。');
     return;
   }
+  await commandProgress(ctx, '正在读取项目列表，请稍候。');
   const all = await sortProjectsByRecentSession(await ctx.projectCatalog.list(), ctx.agent);
   const onlyBound = args.trim() === 'bound';
   const projects = all
@@ -253,7 +286,7 @@ async function handleProjects(args: string, ctx: CommandContext): Promise<void> 
     .filter((project) => !onlyBound || Boolean(project.chatId));
   const pageArg = args.trim().startsWith('page ') ? args.trim().slice(5) : args.trim();
   const page = pageArg ? Math.max(0, Number.parseInt(pageArg, 10) || 0) : 0;
-  await ctx.channel.send(ctx.msg.chatId, { card: projectsCard(projects, page) }, { replyTo: ctx.msg.messageId });
+  await sendCommandCard(ctx, projectsCard(projects, page));
 }
 
 /**
@@ -302,6 +335,7 @@ async function handleProject(args: string, ctx: CommandContext): Promise<void> {
     await reply(ctx, '当前 Bridge 尚未启用项目模式，请先在配置中将 agentBackend 设置为 codex。');
     return;
   }
+  await commandProgress(ctx, '正在处理项目操作，请稍候。');
   if (action === 'sessions') {
     const project = await ctx.projectCatalog.get(projectKey);
     if (!project) return reply(ctx, '没有找到这个项目，请重新打开项目列表。');
@@ -319,7 +353,9 @@ async function handleProject(args: string, ctx: CommandContext): Promise<void> {
     if (!project) return reply(ctx, '没有找到这个项目，请刷新项目列表。');
     const binding = ctx.projectBindings.projectFor(project.projectKey);
     const topicCount = ctx.projectBindings.topicsForProject(project.projectKey).length;
-    await reply(ctx, `📁 **${project.name}**\n路径：\`${project.cwd}\`\n项目群：${binding?.chatId ? '已创建' : '未创建'}\n已绑定话题：${topicCount} 个`);
+    await commandFeedback(ctx, '项目状态', `项目：**${project.name}**\n路径：\`${project.cwd}\`\n项目群：${binding?.chatId ? '已创建' : '未创建'}\n已绑定话题：${topicCount} 个`, [
+      { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
+    ]);
     return;
   }
   if (action !== 'open' || !projectKey) return handleProjects('', ctx);
@@ -332,7 +368,9 @@ async function openProject(projectKey: string, ctx: CommandContext): Promise<voi
   if (!project) return reply(ctx, '没有找到这个项目，请刷新后重试。');
   const current = ctx.projectBindings.projectFor(projectKey);
   if (current?.chatId) {
-    await reply(ctx, '这个项目已经绑定项目群。请到项目群里点击“查看会话”。');
+    await commandFeedback(ctx, '项目群已存在', '这个项目已经绑定项目群，请到项目群里点击“查看会话”。', [
+      { text: '查看会话', value: { cmd: 'project.sessions', arg: projectKey }, style: 'primary' },
+    ]);
     return;
   }
   try {
@@ -346,7 +384,9 @@ async function openProject(projectKey: string, ctx: CommandContext): Promise<voi
     ctx.projectBindings.registerProjects?.([project]);
     await ctx.projectBindings.bindProject(projectKey, created.chatId);
     await ctx.channel.send(created.chatId, { card: projectWelcomeCard(project) });
-    await reply(ctx, `✅ 已创建项目群：**${project.name}**\n请到新群里点击“查看会话”。`);
+    await commandFeedback(ctx, '项目群已创建', `项目：**${project.name}**\n项目群已经准备好，请进入新群后点击“查看会话”。`, [
+      { text: '查看会话', value: { cmd: 'project.sessions', arg: projectKey }, style: 'primary' },
+    ]);
   } catch (err) {
     await reply(ctx, `创建项目群失败：${err instanceof Error ? err.message : String(err)}\n请确认应用有创建群和话题群权限。`);
   }
@@ -359,15 +399,16 @@ async function handleSessions(_args: string, ctx: CommandContext): Promise<void>
   }
   const project = ctx.projectBindings.findProjectByChat(ctx.msg.chatId);
   if (!project) {
-    await ctx.channel.send(ctx.msg.chatId, { card: welcomeCard() }, { replyTo: ctx.msg.messageId });
+    await sendCommandCard(ctx, welcomeCard());
     return;
   }
+  await commandProgress(ctx, '正在读取会话列表，请稍候。');
   const rawArgs = _args.trim();
   const cursor = rawArgs.startsWith('page ') ? rawArgs.slice(5).trim() : undefined;
   const page = ctx.agent.listSessionPage
     ? await ctx.agent.listSessionPage(project.cwd, cursor)
     : { sessions: await ctx.agent.listSessions(project.cwd) };
-  await ctx.channel.send(ctx.msg.chatId, { card: sessionsCard(project.name, page.sessions, page.nextCursor) }, { replyTo: ctx.msg.messageId });
+  await sendCommandCard(ctx, sessionsCard(project.name, page.sessions, page.nextCursor));
 }
 
 async function handleSession(args: string, ctx: CommandContext): Promise<void> {
@@ -377,6 +418,7 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
   }
   const project = ctx.projectBindings.findProjectByChat(ctx.msg.chatId);
   if (!project) return reply(ctx, '当前群还没有绑定项目，请先从“选择项目”开始。');
+  await commandProgress(ctx, '正在打开会话并创建话题，请稍候。');
   const action = args.trim();
   let threadId: string;
   let title: string;
@@ -424,7 +466,12 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
   }
 
   const existing = ctx.projectBindings.findTopicByThread(threadId);
-  if (existing) return reply(ctx, '这个会话已经绑定了一个话题，请使用原话题继续。');
+  if (existing) {
+    await commandFeedback(ctx, '会话已经打开', '这个会话已经绑定了一个话题，请继续使用原话题。', [
+      { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
+    ]);
+    return;
+  }
   const root = await ctx.channel.send(ctx.msg.chatId, { card: topicWelcomeCard(project.name, title, project.cwd) });
   // `send()` returns the root message id (`om_...`), while topic messages
   // carry the separate Feishu thread id (`omt_...`). Persist the actual
@@ -438,7 +485,9 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
     createdBy: ctx.msg.senderId,
     updatedAt: Date.now(),
   });
-  await reply(ctx, '✅ 已创建话题，请到新话题里直接输入需求。');
+  await commandFeedback(ctx, '话题已创建', `会话：**${title}**\n已创建新的 Codex 话题。进入该话题后，直接发送需求即可。`, [
+    { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
+  ]);
 }
 
 function sessionStatusText(status: string, activeFlags: string[] | undefined): string {
@@ -592,8 +641,7 @@ async function handleStatus(_args: string, ctx: CommandContext): Promise<void> {
   const project = ctx.projectBindings?.findProjectByChat(ctx.msg.chatId);
   if (project) {
     const topic = ctx.msg.threadId ? ctx.projectBindings?.findTopic(ctx.msg.chatId, ctx.msg.threadId) : undefined;
-    await ctx.channel.send(ctx.msg.chatId, {
-      card: statusCard({
+    await sendCommandCard(ctx, statusCard({
         cwd: project.cwd,
         sessionId: topic?.codexThreadId,
         sessionStale: false,
@@ -603,8 +651,7 @@ async function handleStatus(_args: string, ctx: CommandContext): Promise<void> {
         projectName: project.name,
         sessionTitle: topic ? '已绑定会话' : undefined,
         hideInternalIds: true,
-      }),
-    }, { replyTo: ctx.msg.messageId });
+      }));
     return;
   }
   const cwd = ctx.workspaces.cwdFor(ctx.scope) ?? homedir();
@@ -617,7 +664,7 @@ async function handleStatus(_args: string, ctx: CommandContext): Promise<void> {
     scope: ctx.scope,
     chatMode: ctx.chatMode,
   });
-  await ctx.channel.send(ctx.msg.chatId, { card }, { replyTo: ctx.msg.messageId });
+  await sendCommandCard(ctx, card);
 }
 
 async function handleSync(args: string, ctx: CommandContext): Promise<void> {

@@ -35,7 +35,7 @@ export function responseFromOmpUiAction(
 
 export function renderOmpUiRequestCard(request: AgentUiRequest, scope?: string): object {
   const elements: object[] = [
-    markdown(`🧩 **${escapeMd(request.title)}**`),
+    markdown(`**${escapeMd(request.title)}**`),
     markdown(introText(request)),
   ];
 
@@ -95,8 +95,8 @@ export function renderOmpUiResultCard(title: string, status: 'submitted' | 'canc
       ? '✅ 已提交。'
       : status === 'cancelled'
         ? '已取消，助手会按取消处理。'
-        : '⚠️ 当前任务已结束，无法提交这个交互。';
-  return shell('交互已处理', [markdown(`🧩 **${escapeMd(title)}**`), markdown(text)]);
+        : '! 当前任务已结束，无法提交这个交互。';
+  return shell('交互已处理', [markdown(`**${escapeMd(title)}**`), markdown(text)]);
 }
 
 function form(request: AgentUiRequest, elements: object[], scope?: string): object {

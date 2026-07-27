@@ -24,15 +24,21 @@ describe('project-first Feishu cards', () => {
     expect(sessions).toContain('归档');
     const metadata = text(sessionsCard('示例项目', [{ threadId: 'thread-2', preview: '等待输入', status: 'active', activeFlags: ['waitingOnUserInput'], source: 'vscode', forkedFromId: 'thread-0', updatedAt: Date.now() }]));
     expect(metadata).toContain('等待输入');
-    expect(metadata).toContain('VS Code');
-    expect(metadata).toContain('分支会话');
+    expect(metadata).not.toContain('VS Code');
+    expect(metadata).not.toContain('分支会话');
   });
 
   it('renders project and topic context without exposing internal ids', () => {
     const project = text(projectWelcomeCard({ name: '示例项目', cwd: '/tmp/demo' }));
     const topic = text(topicWelcomeCard('示例项目', '修复卡片', '/tmp/demo'));
-    expect(project).toContain('项目已连接');
+    expect(project).toContain('项目工作台');
+    expect(project).toContain('代码需求请进入具体话题后发送');
     expect(topic).toContain('示例项目 · 修复卡片');
+    expect(topic).toContain('当前位置：Codex 工作话题');
+    for (const emoji of ['👋', '📁', '📚', '📊', '🔄', '⏹', '💡']) {
+      expect(project).not.toContain(emoji);
+      expect(topic).not.toContain(emoji);
+    }
     expect(topic).not.toContain('thread_id');
   });
 

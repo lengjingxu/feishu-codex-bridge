@@ -53,6 +53,20 @@ describe('Codex project command workflow', () => {
     expect(send).toHaveBeenCalledWith('chat-dm', { card: expect.any(Object) }, { replyTo: 'message-1' });
   });
 
+  it('updates the clicked project card instead of sending a duplicate card', async () => {
+    const send = vi.fn().mockResolvedValue({ messageId: 'message-2' });
+    const updateCard = vi.fn().mockResolvedValue(undefined);
+    const bindings = new JsonProjectBindingStore(join(await mkdtemp(join(tmpdir(), 'feishu-command-test-')), 'bindings.json'));
+    bindings.registerProjects([project]);
+    const ctx = context({ send, updateCard }, bindings);
+    ctx.fromCardAction = true;
+
+    await runCommandHandler('projects', '', ctx);
+
+    expect(updateCard).toHaveBeenCalledWith('message-1', expect.objectContaining({ header: expect.any(Object) }));
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('does not create a second project group after a repeated click', async () => {
     const create = vi.fn().mockResolvedValue({ data: { chat_id: 'chat-project' } });
     const send = vi.fn().mockResolvedValue({ messageId: 'message-2' });
