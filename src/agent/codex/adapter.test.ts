@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { CodexAdapter } from './adapter';
 import type { AgentEvent } from '../types';
 
-async function fakeCodex(): Promise<string> {
+async function fakeCodex(options: { rejectDesktopMetadata?: boolean } = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'codex-adapter-test-'));
   const path = join(dir, 'codex-fake.mjs');
   await writeFile(path, `#!/usr/bin/env node
@@ -13,25 +13,48 @@ import { createInterface } from 'node:readline';
 if (process.argv.includes('--version')) { console.log('codex-cli test'); process.exit(0); }
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const send = (value) => console.log(JSON.stringify(value));
+const rejectDesktopMetadata = ${JSON.stringify(Boolean(options.rejectDesktopMetadata))};
 let activeThreadId = 'thread-new';
+let activeThreadName = '';
 for await (const line of rl) {
   const msg = JSON.parse(line);
   if (msg.method === 'initialize') send({ id: msg.id, result: {} });
   if (msg.method === 'thread/list') send({ id: msg.id, result: { data: [{ id: 'thread-existing', name: '旧会话', preview: '修复卡片', cwd: '/tmp/project', updatedAt: 10, status: { type: 'idle' } }], nextCursor: msg.params.cursor ? null : 'cursor-2', backwardsCursor: null } });
   if (msg.method === 'model/list') send({ id: msg.id, result: { data: [{ model: 'gpt-5.6-sol', isDefault: true }] } });
-  if (msg.method === 'thread/start') { activeThreadId = 'thread-new'; send({ id: msg.id, result: { thread: { id: 'thread-new', name: null, preview: '', cwd: '/tmp/project' } } }); }
+  if (msg.method === 'thread/start') {
+    if (rejectDesktopMetadata && msg.params.threadSource) {
+      send({ id: msg.id, error: { code: -32602, message: 'unknown field threadSource' } });
+      continue;
+    }
+    if (!rejectDesktopMetadata && (msg.params.serviceName !== 'feishu_codex_bridge' || msg.params.threadSource !== 'user')) {
+      send({ id: msg.id, error: { code: -32602, message: 'desktop metadata missing' } });
+      continue;
+    }
+    activeThreadId = 'thread-new';
+    activeThreadName = '';
+    send({ id: msg.id, result: { thread: { id: 'thread-new', name: null, preview: '', cwd: '/tmp/project' } } });
+  }
   if (msg.method === 'thread/resume') {
     if (msg.params.threadId === 'missing-rollout') send({ id: msg.id, error: { code: -32000, message: 'no rollout found for thread id missing-rollout' } });
+    else if (msg.params.threadId === 'unloaded') send({ id: msg.id, result: { thread: { id: 'unloaded', sessionId: 'session-2', name: '恢复会话', preview: '恢复详情', cwd: '/tmp/project', updatedAt: 30, status: { type: 'idle' }, source: 'vscode', turns: [{ items: [{ type: 'agentMessage', text: '已恢复' }] }] } } });
     else { activeThreadId = msg.params.threadId; send({ id: msg.id, result: { thread: { id: msg.params.threadId, cwd: '/tmp/project' } } }); }
   }
-  if (msg.method === 'thread/read') send({ id: msg.id, result: { thread: { id: msg.params.threadId, sessionId: 'session-1', name: '详情会话', preview: '查看详情', cwd: '/tmp/project', updatedAt: 20, status: { type: 'active', activeFlags: ['waitingOnUserInput'] }, source: 'vscode', turns: [{ items: [{ type: 'userMessage', content: [{ type: 'text', text: '请查看', text_elements: [] }] }, { type: 'agentMessage', text: '正在查看' }, { type: 'commandExecution', command: 'pnpm test' }] }] } } });
+  if (msg.method === 'thread/read') {
+    if (msg.params.threadId === 'unloaded') send({ id: msg.id, error: { code: -32000, message: 'thread not loaded: unloaded' } });
+    else send({ id: msg.id, result: { thread: { id: msg.params.threadId, sessionId: 'session-1', name: '详情会话', preview: '查看详情', cwd: '/tmp/project', updatedAt: 20, status: { type: 'active', activeFlags: ['waitingOnUserInput'] }, source: 'vscode', turns: [{ items: [{ type: 'userMessage', content: [{ type: 'text', text: '请查看', text_elements: [] }] }, { type: 'agentMessage', text: '正在查看' }, { type: 'commandExecution', command: 'pnpm test' }] }] } } });
+  }
+  if (msg.method === 'thread/name/set') {
+    activeThreadName = msg.params.name;
+    send({ id: msg.id, result: {} });
+  }
   if (msg.method === 'turn/start') {
     send({ id: msg.id, result: { turn: { id: 'turn-1' } } });
     if (activeThreadId === 'legacy-compact') {
       send({ method: 'error', params: { threadId: activeThreadId, error: { message: 'Error running remote compact task: model requires a newer version of Codex' } } });
       continue;
     }
-    send({ method: 'item/agentMessage/delta', params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-1', delta: '完成' } });
+    const delta = msg.params.clientUserMessageId === 'msg-1' && activeThreadName === '干净标题' ? '兼容完成' : '完成';
+    send({ method: 'item/agentMessage/delta', params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-1', delta } });
     send({ method: 'turn/completed', params: { threadId: activeThreadId, turn: { id: 'turn-1', status: 'completed' } } });
   }
   if (msg.method === 'turn/interrupt') send({ id: msg.id, result: {} });
@@ -84,6 +107,40 @@ describe('CodexAdapter', () => {
       { type: 'text', delta: '完成' },
       { type: 'done', sessionId: 'thread-new' },
     ]);
+    await adapter.close();
+  });
+
+  it('writes desktop-compatible metadata, a clean title and a stable user message id', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex() });
+    const run = adapter.run({
+      prompt: '请测试',
+      title: '干净标题',
+      clientUserMessageId: 'msg-1',
+      cwd: '/tmp/project',
+    });
+    await expect(collect(run.events)).resolves.toEqual([
+      { type: 'system', sessionId: 'thread-new', cwd: '/tmp/project', model: undefined },
+      { type: 'text', delta: '兼容完成' },
+      { type: 'done', sessionId: 'thread-new' },
+    ]);
+    await adapter.close();
+  });
+
+  it('falls back when an older app-server rejects desktop metadata', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex({ rejectDesktopMetadata: true }) });
+    const run = adapter.run({ prompt: '请测试', cwd: '/tmp/project' });
+    await expect(collect(run.events)).resolves.toContainEqual({ type: 'done', sessionId: 'thread-new' });
+    await adapter.close();
+  });
+
+  it('resumes a persisted session when thread/read reports it is not loaded', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex() });
+    await expect(adapter.readSession?.('unloaded')).resolves.toMatchObject({
+      threadId: 'unloaded',
+      sessionId: 'session-2',
+      turnCount: 1,
+      recentActivity: [{ kind: '助手', text: '已恢复' }],
+    });
     await adapter.close();
   });
 

@@ -482,7 +482,14 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     }
   }
 
-  if (await submitToActiveRun({ channel, activeRuns, media, msg, scope })) {
+  if (await submitToActiveRun({
+    channel,
+    activeRuns,
+    media,
+    msg,
+    scope,
+    metadataFirst: getAgentBackend(controls.cfg) !== 'codex',
+  })) {
     log.info('intake', 'submitted-active-run', { scope });
     return;
   }
@@ -497,8 +504,9 @@ async function submitToActiveRun(deps: {
   media: MediaCache;
   msg: NormalizedMessage;
   scope: string;
+  metadataFirst: boolean;
 }): Promise<boolean> {
-  const { channel, activeRuns, media, msg, scope } = deps;
+  const { channel, activeRuns, media, msg, scope, metadataFirst } = deps;
   if (!activeRuns.has(scope)) return false;
   const resources = msg.resources.map((resource) => ({ messageId: msg.messageId, resource }));
   const attachments = await media.resolve(msg.chatId, resources);
@@ -508,7 +516,12 @@ async function submitToActiveRun(deps: {
     const quote = await fetchQuotedContext(channel, msg.replyToMessageId);
     if (quote) quotes.push(quote);
   }
-  const prompt = buildPrompt([msg], attachments, quotes);
+  const prompt = buildPrompt(
+    [msg],
+    attachments,
+    quotes,
+    metadataFirst,
+  );
   const trimmed = msg.content.trimStart();
   const kind = trimmed.startsWith('!') ? 'steer' : 'follow_up';
   return activeRuns.submitPrompt(scope, kind, prompt, imagePaths);
@@ -591,7 +604,13 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     }
   }
 
-  const prompt = buildPrompt(batch, attachments, quotes);
+  const prompt = buildPrompt(
+    batch,
+    attachments,
+    quotes,
+    getAgentBackend(controls.cfg) !== 'codex',
+  );
+  const title = deriveThreadTitle(batch, attachments.length > 0);
   log.info('prompt', 'built', { promptChars: prompt.length, quotes: quotes.length });
 
   const project = projectBindings?.findProjectByChat(chatId);
@@ -622,6 +641,8 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
 
   const run = agent.run({
     prompt,
+    clientUserMessageId: lastMsg.messageId,
+    title,
     sessionId: resumeFrom,
     cwd,
     model: getOmpModel(controls.cfg),
@@ -956,41 +977,65 @@ function expandedMessageContent(m: NormalizedMessage): string {
   return expandInteractiveCard(m.content, rawContent);
 }
 
-function buildPrompt(
+export function buildPrompt(
   batch: NormalizedMessage[],
   attachments: LocalAttachment[],
   quotes: QuotedContext[] = [],
+  metadataFirst = false,
 ): string {
   const fileKeys = batch.flatMap((m) => m.resources.map((r) => r.fileKey));
-  const texts = batch
-    .map((m) => stripAttachmentRefs(expandedMessageContent(m), fileKeys).trim())
-    .filter(Boolean);
+  const texts = messageTexts(batch, fileKeys);
   const ctxHeader = buildBridgeContextHeader(batch);
   const quoteBlock = renderQuotedBlock(quotes);
+  const userPart = texts.length > 0
+    ? texts.join('\n\n')
+    : attachments.length > 0
+      ? '请看下面的附件。'
+      : '请处理这条消息。';
+  const userParts = [userPart];
 
-  // Order: <bridge_context> (metadata) → <quoted_message>(s) (what user is
-  // pointing at) → user text + attachments (what they're asking).
-  const prefixParts = [ctxHeader, quoteBlock].filter(Boolean);
-  const prefix = prefixParts.length > 0 ? `${prefixParts.join('\n\n')}\n\n` : '';
-
-  if (attachments.length === 0) {
-    return `${prefix}${texts.join('\n\n')}`;
+  if (attachments.length > 0) {
+    const attachLines = attachments.map((a) => {
+      const label =
+        a.kind === 'image'
+          ? '图片'
+          : a.kind === 'audio'
+            ? '音频'
+            : a.kind === 'video'
+              ? '视频'
+              : '文件';
+      const name = a.originalName ? ` (${a.originalName})` : '';
+      return `- ${a.path}${name} — ${label}`;
+    });
+    userParts.push(`附件（本地路径）：\n${attachLines.join('\n')}`);
   }
 
-  const attachLines = attachments.map((a) => {
-    const label =
-      a.kind === 'image'
-        ? '图片'
-        : a.kind === 'audio'
-          ? '音频'
-          : a.kind === 'video'
-            ? '视频'
-            : '文件';
-    const name = a.originalName ? ` (${a.originalName})` : '';
-    return `- ${a.path}${name} — ${label}`;
-  });
-  const userPart = texts.length > 0 ? texts.join('\n\n') : '请看下面的附件。';
-  return `${prefix}${userPart}\n\n附件（本地路径）：\n${attachLines.join('\n')}`;
+  if (metadataFirst) {
+    // Preserve OMP's established prompt contract.
+    return [ctxHeader, quoteBlock, ...userParts].filter(Boolean).join('\n\n');
+  }
+
+  // Keep the real request first in Codex so it derives a useful desktop
+  // title. Quote and routing metadata stay model-visible without dominating
+  // history.
+  return [...userParts, quoteBlock, ctxHeader].filter(Boolean).join('\n\n');
+}
+
+export function deriveThreadTitle(
+  batch: NormalizedMessage[],
+  hasAttachments = false,
+): string {
+  const fileKeys = batch.flatMap((m) => m.resources.map((r) => r.fileKey));
+  const text = messageTexts(batch, fileKeys)[0]?.replace(/\s+/g, ' ').trim();
+  if (!text) return hasAttachments ? '查看附件' : '飞书新会话';
+  const chars = Array.from(text);
+  return chars.length <= 48 ? text : `${chars.slice(0, 47).join('')}…`;
+}
+
+function messageTexts(batch: NormalizedMessage[], fileKeys: string[]): string[] {
+  return batch
+    .map((m) => stripAttachmentRefs(expandedMessageContent(m), fileKeys).trim())
+    .filter(Boolean);
 }
 
 function buildBridgeContextHeader(batch: NormalizedMessage[]): string {
