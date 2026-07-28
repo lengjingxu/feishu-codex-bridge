@@ -1,7 +1,7 @@
 {
   "name": "feishu-omp-bridge",
   "version": "0.1.0",
-  "description": "Bridge Feishu/Lark messenger with local Codex app-server or Oh My Pi",
+  "description": "Continue local Codex sessions from Feishu or Lark without exposing a public webhook",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lengjingxu/feishu-codex-bridge.git"
@@ -12,6 +12,7 @@
   },
   "type": "module",
   "bin": {
+    "feishu-codex-bridge": "./bin/feishu-omp-bridge.mjs",
     "feishu-omp-bridge": "./bin/feishu-omp-bridge.mjs"
   },
   "exports": {
@@ -24,6 +25,9 @@
     "dist",
     "bin",
     "README.md",
+    "README.en.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
     "LICENSE"
   ],
   "scripts": {
@@ -31,13 +35,15 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "pnpm typecheck && pnpm build"
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "audit": "pnpm audit --audit-level=high --registry=https://registry.npmjs.org",
+    "prepublishOnly": "pnpm check"
   },
   "dependencies": {
-    "@clack/prompts": "^1.4.0",
-    "@larksuiteoapi/node-sdk": "^1.65.0",
+    "@clack/prompts": "^1.7.0",
+    "@larksuiteoapi/node-sdk": "^1.71.1",
     "commander": "^12.1.0",
-    "https-proxy-agent": "^9.0.0",
+    "https-proxy-agent": "^9.1.0",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
@@ -45,17 +51,22 @@
     "@types/qrcode-terminal": "^0.12.2",
     "tsup": "^8.3.5",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.8"
+    "vite": "^6.4.3",
+    "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.12.0"
   },
   "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1"
+    },
     "onlyBuiltDependencies": [
       "esbuild",
       "protobufjs"
     ]
   },
+  "packageManager": "pnpm@10.26.1",
   "keywords": [
     "feishu",
     "lark",

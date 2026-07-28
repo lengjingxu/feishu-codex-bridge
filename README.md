@@ -1,10 +1,75 @@
 # 飞书 Codex Bridge
 
-把本机 Codex 会话接入飞书话题。
+[![CI](https://github.com/lengjingxu/feishu-codex-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/lengjingxu/feishu-codex-bridge/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/lengjingxu/feishu-codex-bridge/actions/workflows/codeql.yml/badge.svg)](https://github.com/lengjingxu/feishu-codex-bridge/actions/workflows/codeql.yml)
+[![Node.js 20.12+](https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Bridge 通过飞书应用长连接接收消息，在本机调用 Codex `app-server`，再把执行进度、审批请求和最终回复送回原话题。整个过程不需要公网 Webhook，也不会把本机服务端口暴露到互联网。
+[English](README.en.md) · [安全政策](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
 
-项目同时保留 Oh My Pi（OMP）后端，已有 OMP 工作流可以继续使用。
+**在飞书里远程继续本机 Codex：一个项目一个群，一个会话一个话题。**
+
+用手机或飞书桌面端查看实时执行进度、批准工具调用、补充输入、停止任务和继续追问。Bridge 通过飞书/Lark 长连接在本机调用 Codex `app-server`，不需要公网 Webhook，也不会暴露本机端口。
+
+> 代码、凭据和 Codex 会话仍保存在你的设备上。飞书只承担交互界面的角色。
+
+## 为什么使用它
+
+| 能力 | 带来的体验 |
+| --- | --- |
+| 飞书原生话题映射 Codex Session | 多个项目和任务互不串线，历史会话可以继续 |
+| 实时状态卡与自动同步 | 离开电脑也能看到工具进度和最终结果 |
+| 审批与用户输入卡片 | Codex 需要确认时，直接在飞书处理 |
+| 本地主动长连接 | 不搭公网服务器、不配置 Webhook、不开放入站端口 |
+| 访问控制与加密密钥库 | 限定用户、群聊、管理员和可见项目目录 |
+| Codex + OMP 双后端 | 新项目使用 Codex，已有 Oh My Pi 工作流继续运行 |
+
+## 一分钟看懂
+
+```mermaid
+sequenceDiagram
+    participant U as 飞书用户
+    participant B as Feishu Codex Bridge
+    participant C as 本机 Codex
+    U->>B: 在项目群中新建话题并发送需求
+    B->>C: 创建或恢复 Codex Session
+    C-->>B: 流式回复、工具进度、审批请求
+    B-->>U: 更新同一张飞书状态卡
+    U->>B: 批准、补充输入或停止
+    B->>C: 继续原 Session
+```
+
+适合这些场景：
+
+- 通勤途中查看本机编码任务进度；
+- 在飞书里批准命令、补充需求或随时停止任务；
+- 用不同话题并行管理多个 Codex 会话；
+- 从手机恢复电脑上的历史会话继续工作；
+- 在不暴露开发机端口的前提下远程使用本机 Agent。
+
+## 快速开始
+
+需要 Node.js 20.12+、pnpm、已登录的本机 Codex，以及一个已发布的飞书或 Lark 自建应用。
+
+```bash
+git clone https://github.com/lengjingxu/feishu-codex-bridge.git
+cd feishu-codex-bridge
+pnpm install
+pnpm build
+node bin/feishu-omp-bridge.mjs run
+```
+
+首次启动会引导填写租户、App ID 和 App Secret。App Secret 会进入本机加密密钥库，不会写入项目目录。
+
+在飞书开放平台：
+
+1. 启用机器人能力；
+2. 将事件订阅设为“使用长连接接收事件”；
+3. 订阅 `im.message.receive_v1`；
+4. 开通消息、群聊和成员管理所需权限；
+5. 发布应用并设置正确的可用范围。
+
+> `feishu-omp-bridge` 是为兼容已有安装保留的 CLI 名称；同时提供 `feishu-codex-bridge` 命令别名。
 
 ## 使用体验
 
@@ -64,49 +129,6 @@ Codex Session                → 飞书话题
 ```
 
 映射只保存在本机，不会展示给普通用户。
-
-## 环境要求
-
-- Node.js 20+
-- pnpm
-- 一个已发布的飞书或 Lark 自建应用
-- Codex 模式：本机已登录 Codex
-- OMP 模式：本机已安装并配置 OMP
-
-## 安装
-
-```bash
-git clone https://github.com/lengjingxu/feishu-codex-bridge.git
-cd feishu-codex-bridge
-pnpm install
-pnpm build
-```
-
-前台启动：
-
-```bash
-node bin/feishu-omp-bridge.mjs run
-```
-
-首次启动会引导填写：
-
-- 租户：中国版选择 `feishu`，国际版选择 `lark`
-- App ID
-- App Secret
-
-App Secret 会保存到本机加密 keystore，不会写入项目目录。
-
-## 飞书应用配置
-
-在飞书开放平台创建自建应用并完成以下设置：
-
-1. 启用机器人能力。
-2. 将事件订阅方式设为“使用长连接接收事件”。
-3. 订阅 `im.message.receive_v1`。
-4. 开通发送和读取消息、创建群聊、邀请成员等所需权限。
-5. 发布应用版本，并确保使用者在应用可用范围内。
-
-Bridge 主动连接飞书服务器，不需要填写公网回调地址。
 
 ## 启用 Codex 项目模式
 
@@ -328,13 +350,17 @@ macOS 如果同时安装了旧 Homebrew CLI 和新版 ChatGPT 桌面端，优先
 
 ```bash
 pnpm install
-pnpm dev
-pnpm typecheck
-pnpm test
-pnpm build
+pnpm check
+pnpm run audit
 ```
 
 项目使用 TypeScript、Vitest 和 tsup。
+
+## 贡献与安全
+
+- 提交代码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 安全问题请通过 [GitHub 私密漏洞报告](https://github.com/lengjingxu/feishu-codex-bridge/security/advisories/new) 提交，不要公开 Issue。
+- 普通缺陷和功能建议可以提交到 [GitHub Issues](https://github.com/lengjingxu/feishu-codex-bridge/issues)。
 
 ## 许可证
 

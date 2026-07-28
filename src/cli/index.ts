@@ -23,7 +23,7 @@ const program = new Command();
 
 program
   .name('feishu-omp-bridge')
-  .description('Bridge Feishu/Lark messenger with the local Oh My Pi CLI')
+  .description('Continue local Codex or Oh My Pi sessions from Feishu/Lark')
   .version(pkg.version, '-v, --version');
 
 // === process-level commands (work directly on bridge processes) ===
