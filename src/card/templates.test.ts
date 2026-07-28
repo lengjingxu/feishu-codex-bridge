@@ -20,7 +20,9 @@ describe('project-first Feishu cards', () => {
     expect(unboundProject).toContain('创建项目群');
     expect(unboundProject).not.toContain('查看会话');
     expect(text(projectsCard([{ projectKey: 'p1', name: '示例项目', cwd: '/tmp/demo', hostId: '本机', chatId: 'chat-1' }]))).toContain('查看会话');
-    expect(text(sessionsCard('示例项目', []))).toContain('新建会话');
+    const emptySessions = text(sessionsCard('示例项目', []));
+    expect(emptySessions).toContain('新建话题');
+    expect(emptySessions).not.toContain('session.new');
     const sessions = text(sessionsCard('示例项目', [{ threadId: 'thread-1', preview: '修复卡片', status: 'idle', updatedAt: Date.now() }], 'cursor-2'));
     expect(sessions).toContain('继续此会话');
     expect(sessions).toContain('加载更多');
@@ -35,9 +37,11 @@ describe('project-first Feishu cards', () => {
     const project = text(projectWelcomeCard({ name: '示例项目', cwd: '/tmp/demo' }));
     const topic = text(topicWelcomeCard('示例项目', '修复卡片', '/tmp/demo'));
     expect(project).toContain('项目工作台');
-    expect(project).toContain('代码需求请进入具体话题后发送');
+    expect(project).toContain('新建话题');
+    expect(project).not.toContain('session.new');
     expect(topic).toContain('示例项目 · 修复卡片');
     expect(topic).toContain('当前位置：Codex 工作话题');
+    expect(topic).not.toContain('session.new');
     for (const emoji of ['👋', '📁', '📚', '📊', '🔄', '⏹', '💡']) {
       expect(project).not.toContain(emoji);
       expect(topic).not.toContain(emoji);

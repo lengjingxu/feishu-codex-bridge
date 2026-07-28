@@ -55,6 +55,7 @@ import { addWorkingReaction, removeReaction } from './reaction';
 import { isThreadScoped } from './scope';
 import { SessionSyncManager } from '../session/sync';
 import { showProjectWorkbench } from '../project/workbench';
+import { bindNativeTopicSession } from '../project/topic-session';
 
 const DEBOUNCE_MS = 600;
 
@@ -473,14 +474,11 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
       pending.cancel(scope);
       return;
     }
+    // A Feishu-native topic is the creation gesture for a Codex session.
+    // Leave an unbound project topic on the normal run path: the first agent
+    // system event supplies the new session id, which is persisted below.
     if (project && msg.threadId && !topicBinding) {
-      await channel.send(
-        msg.chatId,
-        { markdown: '这个话题还没有绑定 Codex 会话。请回到项目群，点击“查看会话”，再选择“继续此会话”或“新建会话”。' },
-        { replyTo: msg.messageId, replyInThread: true },
-      );
-      pending.cancel(scope);
-      return;
+      log.info('session', 'native-topic-start', { scope, topicId: msg.threadId });
     }
   }
 
@@ -597,8 +595,9 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   log.info('prompt', 'built', { promptChars: prompt.length, quotes: quotes.length });
 
   const project = projectBindings?.findProjectByChat(chatId);
-  const topicBinding = findTopicBinding(projectBindings, chatId, threadId, firstMsg.rootId);
+  let topicBinding = findTopicBinding(projectBindings, chatId, threadId, firstMsg.rootId);
   const threadScoped = isThreadScoped(mode, threadId, Boolean(project));
+  const nativeTopicId = threadScoped ? (threadId ?? firstMsg.rootId) : undefined;
   const cwd = project?.cwd ?? workspaces.cwdFor(scope) ?? homedir();
   const resumeFrom = topicBinding?.codexThreadId ?? sessions.resumeFor(scope, cwd);
   if (resumeFrom) {
@@ -667,12 +666,31 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   const uiCards = new Map<string, { messageId: string; title: string }>();
   const uiHooks: AgentStreamHooks = {
     async onSystem(sessionId) {
-      if (!topicBinding || sessionId === topicBinding.codexThreadId || !projectBindings) return;
-      await projectBindings.updateTopicSession(topicBinding.chatId, topicBinding.topicId, sessionId);
-      log.info('session', 'topic-rebound', {
-        topicId: topicBinding.topicId,
-        previousSessionId: topicBinding.codexThreadId,
+      if (!projectBindings) return;
+      if (topicBinding) {
+        if (sessionId === topicBinding.codexThreadId) return;
+        await projectBindings.updateTopicSession(topicBinding.chatId, topicBinding.topicId, sessionId);
+        log.info('session', 'topic-rebound', {
+          topicId: topicBinding.topicId,
+          previousSessionId: topicBinding.codexThreadId,
+          sessionId,
+        });
+        topicBinding = { ...topicBinding, codexThreadId: sessionId, updatedAt: Date.now() };
+        return;
+      }
+      if (!project || !nativeTopicId) return;
+      const result = await bindNativeTopicSession(projectBindings, {
+        project,
+        chatId,
+        topicId: nativeTopicId,
         sessionId,
+        createdBy: firstMsg.senderId,
+      });
+      topicBinding = result.binding;
+      log.info('session', result.created ? 'native-topic-bound' : 'native-topic-reused', {
+        topicId: nativeTopicId,
+        sessionId: result.binding.codexThreadId,
+        projectKey: project.projectKey,
       });
     },
     async onUiRequest(request) {
