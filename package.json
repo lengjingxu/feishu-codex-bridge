@@ -43,7 +43,7 @@
   "dependencies": {
     "@clack/prompts": "^1.7.0",
     "@larksuiteoapi/node-sdk": "^1.71.1",
-    "commander": "^12.1.0",
+    "commander": "^15.0.0",
     "https-proxy-agent": "^9.1.0",
     "qrcode-terminal": "^0.12.0"
   },
