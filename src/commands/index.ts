@@ -18,6 +18,7 @@ import {
   projectsCard,
   sessionProgressCard,
   sessionDetailCard,
+  sessionSearchCard,
   sessionsCard,
   statusCard,
   topicWelcomeCard,
@@ -423,9 +424,20 @@ async function handleSessions(_args: string, ctx: CommandContext): Promise<void>
   }
   await commandProgress(ctx, '正在读取会话列表，请稍候。');
   const rawArgs = _args.trim();
+  if (rawArgs === 'search' && !ctx.formValue) {
+    await sendCommandCard(ctx, sessionSearchCard(project.name));
+    return;
+  }
+  const searchTerm = rawArgs === 'search'
+    ? normalizeFormText(ctx.formValue?.session_search)
+    : rawArgs.startsWith('search ') ? rawArgs.slice(7).trim() : undefined;
+  if (rawArgs === 'search' && !searchTerm) {
+    await sendCommandCard(ctx, sessionSearchCard(project.name));
+    return;
+  }
   const cursor = rawArgs.startsWith('page ') ? rawArgs.slice(5).trim() : undefined;
   const page = ctx.agent.listSessionPage
-    ? await ctx.agent.listSessionPage(project.cwd, cursor)
+    ? await ctx.agent.listSessionPage(project.cwd, cursor, searchTerm)
     : { sessions: await ctx.agent.listSessions(project.cwd) };
   await sendCommandCard(ctx, sessionsCard(project.name, page.sessions, page.nextCursor));
 }
@@ -467,9 +479,68 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
     if (!ctx.agent.archiveSession) return reply(ctx, '当前 Codex 版本不支持归档会话。');
     await ctx.agent.archiveSession(threadIdToArchive);
     await commandFeedback(ctx, '会话已归档', `会话：**${found.name ?? found.preview.slice(0, 40) ?? '未命名会话'}**\n已从未归档列表中移除。`, [
+      { text: '撤销归档', value: { cmd: 'session.unarchive', arg: threadIdToArchive }, style: 'primary' },
       { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
     ]);
-    return handleSessions('', ctx);
+    return;
+  } else if (action.startsWith('unarchive ')) {
+    const threadIdToRestore = action.slice(10).trim();
+    if (!threadIdToRestore || !ctx.agent.unarchiveSession) return reply(ctx, '当前 Codex 版本不支持撤销归档。');
+    let restored: import('../project/types').SessionSummary;
+    try {
+      restored = await ctx.agent.unarchiveSession(threadIdToRestore);
+    } catch (err) {
+      await commandFeedback(ctx, '撤销归档失败', operationError(err), []);
+      return;
+    }
+    await commandFeedback(ctx, '已撤销归档', `会话：**${restored.name ?? restored.preview.slice(0, 40) ?? '未命名会话'}**\n已恢复到会话列表。`, [
+      { text: '继续此会话', value: { cmd: 'session.open', arg: restored.threadId }, style: 'primary' },
+      { text: '查看会话', value: { cmd: 'sessions' } },
+    ]);
+    return;
+  } else if (action === 'review' || action.startsWith('review ')) {
+    const target = action.slice(6).trim() || currentTopicThreadId(ctx);
+    if (!target) return reply(ctx, '请在已连接的 Codex 话题中发起审查。');
+    if (!ctx.agent.reviewSession) return reply(ctx, '当前 Codex 版本不支持自动审查。');
+    try {
+      await ctx.agent.reviewSession(target);
+    } catch (err) {
+      await commandFeedback(ctx, '代码审查启动失败', operationError(err), []);
+      return;
+    }
+    await commandFeedback(ctx, '代码审查已启动', 'Codex 正在审查当前未提交改动。完成后可刷新进度查看结果。', [
+      { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
+    ]);
+    return;
+  } else if (action === 'compact' || action.startsWith('compact ')) {
+    const target = action.slice(7).trim() || currentTopicThreadId(ctx);
+    if (!target) return reply(ctx, '请在已连接的 Codex 话题中压缩上下文。');
+    if (!ctx.agent.compactSession) return reply(ctx, '当前 Codex 版本不支持上下文压缩。');
+    try {
+      await ctx.agent.compactSession(target);
+    } catch (err) {
+      await commandFeedback(ctx, '上下文压缩启动失败', operationError(err), []);
+      return;
+    }
+    await commandFeedback(ctx, '上下文压缩已启动', 'Codex 正在压缩当前会话历史，完成后仍会留在本话题。', [
+      { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
+    ]);
+    return;
+  } else if (action === 'fork' || action.startsWith('fork ')) {
+    const sourceThreadId = action.slice(4).trim() || currentTopicThreadId(ctx);
+    if (!sourceThreadId) return reply(ctx, '请在已连接的 Codex 话题中创建分支会话。');
+    if (!ctx.agent.forkSession) return reply(ctx, '当前 Codex 版本不支持分支会话。');
+    let forked: import('../project/types').SessionSummary;
+    try {
+      forked = await ctx.agent.forkSession(sourceThreadId, project.cwd);
+    } catch (err) {
+      await commandFeedback(ctx, '分支会话创建失败', operationError(err), []);
+      return;
+    }
+    const source = (await ctx.agent.listSessions(project.cwd)).find((session) => session.threadId === sourceThreadId);
+    const forkTitle = forked.name?.trim() || `${source?.name?.trim() || '当前会话'} · 分支`;
+    await createSessionTopic(ctx, project, forked.threadId, forkTitle);
+    return;
   } else {
     return handleSessions('', ctx);
   }
@@ -481,6 +552,16 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
     ]);
     return;
   }
+  await createSessionTopic(ctx, project, threadId, title);
+}
+
+async function createSessionTopic(
+  ctx: CommandContext,
+  project: Project,
+  threadId: string,
+  title: string,
+): Promise<void> {
+  if (!ctx.projectBindings) throw new Error('项目绑定存储未启用');
   const root = await ctx.channel.send(ctx.msg.chatId, { card: topicWelcomeCard(project.name, title, project.cwd) });
   // `send()` returns the root message id (`om_...`), while topic messages
   // carry the separate Feishu thread id (`omt_...`). Persist the actual
@@ -497,6 +578,23 @@ async function handleSession(args: string, ctx: CommandContext): Promise<void> {
   await commandFeedback(ctx, '话题已创建', `会话：**${title}**\n项目群中已出现以“项目名 · 会话名”命名的新话题。进入该话题后，直接发送需求即可。`, [
     { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
   ]);
+}
+
+function currentTopicThreadId(ctx: CommandContext): string | undefined {
+  return ctx.msg.threadId
+    ? ctx.projectBindings?.findTopic(ctx.msg.chatId, ctx.msg.threadId)?.codexThreadId
+    : undefined;
+}
+
+function normalizeFormText(value: unknown): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined || raw === null) return undefined;
+  const text = String(raw).trim();
+  return text || undefined;
+}
+
+function operationError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function sessionStatusText(status: string, activeFlags: string[] | undefined): string {

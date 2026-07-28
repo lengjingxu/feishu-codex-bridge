@@ -1,12 +1,33 @@
+export interface AgentUiQuestion {
+  id: string;
+  title: string;
+  prompt: string;
+  options?: Array<{ label: string; description?: string }>;
+  allowOther?: boolean;
+  secret?: boolean;
+}
+
+export type AgentApprovalDecision =
+  | 'accept'
+  | 'acceptForSession'
+  | 'decline'
+  | 'cancel'
+  | { acceptWithExecpolicyAmendment: Record<string, unknown> }
+  | { applyNetworkPolicyAmendment: Record<string, unknown> };
+
 export type AgentUiRequest =
   | { id: string; method: 'select'; title: string; options: string[]; timeout?: number }
   | { id: string; method: 'confirm'; title: string; message: string; timeout?: number }
   | { id: string; method: 'input'; title: string; placeholder?: string; timeout?: number }
-  | { id: string; method: 'editor'; title: string; prefill?: string; promptStyle?: boolean };
+  | { id: string; method: 'editor'; title: string; prefill?: string; promptStyle?: boolean }
+  | { id: string; method: 'form'; title: string; questions: AgentUiQuestion[]; timeout?: number }
+  | { id: string; method: 'approval'; title: string; message: string; decisions: AgentApprovalDecision[]; timeout?: number };
 
 export type AgentUiResponse =
   | { value: string }
   | { confirmed: boolean }
+  | { answers: Record<string, string[]> }
+  | { decision: AgentApprovalDecision }
   | { cancelled: true; timedOut?: boolean };
 
 export type AgentUiNoticeType = 'info' | 'warning' | 'error';
@@ -68,7 +89,7 @@ export type AgentEvent =
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_update'; id: string; output: string }
   | { type: 'tool_result'; id: string; output: string; isError: boolean }
-  | { type: 'usage'; inputTokens?: number; outputTokens?: number; costUsd?: number }
+  | { type: 'usage'; inputTokens?: number; outputTokens?: number; totalTokens?: number; contextTokens?: number; modelContextWindow?: number; costUsd?: number }
   | { type: 'ui_request'; request: AgentUiRequest }
   | { type: 'ui_cancel'; targetId: string }
   | { type: 'ui_notice'; message: string; level?: AgentUiNoticeType }
@@ -131,10 +152,14 @@ export interface AgentAdapter {
   listSessions?(cwd: string): Promise<import('../project/types').SessionSummary[]>;
   /** List recent non-archived sessions across all project directories. */
   listRecentSessions?(): Promise<import('../project/types').SessionSummary[]>;
-  listSessionPage?(cwd: string, cursor?: string): Promise<import('../project/types').SessionPage>;
+  listSessionPage?(cwd: string, cursor?: string, searchTerm?: string): Promise<import('../project/types').SessionPage>;
   listProjectRoots?(): Promise<string[]>;
   readSession?(threadId: string): Promise<import('../project/types').SessionDetail>;
   createSession?(cwd: string): Promise<import('../project/types').SessionSummary>;
   renameSession?(threadId: string, title: string): Promise<void>;
   archiveSession?(threadId: string): Promise<void>;
+  unarchiveSession?(threadId: string): Promise<import('../project/types').SessionSummary>;
+  forkSession?(threadId: string, cwd?: string): Promise<import('../project/types').SessionSummary>;
+  compactSession?(threadId: string): Promise<void>;
+  reviewSession?(threadId: string): Promise<void>;
 }

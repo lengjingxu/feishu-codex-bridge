@@ -30,6 +30,14 @@ export interface RunState {
   footer: FooterStatus;
   terminal: Terminal;
   ui: UiState;
+  sessionId?: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    contextTokens?: number;
+    modelContextWindow?: number;
+  };
   errorMsg?: string;
   /** Set when terminal === 'idle_timeout' — how long OMP was idle before
    * the watchdog gave up (so the message can say "N 分钟无响应"). */
@@ -52,6 +60,9 @@ function closeStreamingText(blocks: Block[]): Block[] {
 
 export function reduce(state: RunState, evt: AgentEvent): RunState {
   switch (evt.type) {
+    case 'system':
+      return evt.sessionId ? { ...state, sessionId: evt.sessionId } : state;
+
     case 'text': {
       const last = state.blocks[state.blocks.length - 1];
       if (last && last.kind === 'text' && last.streaming) {
@@ -126,7 +137,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
           ...closeStreamingText(state.blocks),
           {
             kind: 'text',
-            content: `OMP 需要用户交互：**${evt.request.title}**\n\n已发送交互卡片，请在那里完成操作。`,
+            content: `助手需要用户交互：**${evt.request.title}**\n\n已发送交互卡片，请在那里完成操作。`,
             streaming: false,
           },
         ],
@@ -139,7 +150,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
         ...state,
         blocks: [
           ...closeStreamingText(state.blocks),
-          { kind: 'text', content: `OMP 交互已取消：${evt.targetId}`, streaming: false },
+          { kind: 'text', content: `交互已取消：${evt.targetId}`, streaming: false },
         ],
         footer: state.footer === 'waiting_input' ? null : state.footer,
       };
@@ -173,6 +184,17 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
             streaming: false,
           },
         ],
+      };
+    case 'usage':
+      return {
+        ...state,
+        usage: {
+          inputTokens: evt.inputTokens,
+          outputTokens: evt.outputTokens,
+          totalTokens: evt.totalTokens,
+          contextTokens: evt.contextTokens,
+          modelContextWindow: evt.modelContextWindow,
+        },
       };
     case 'error': {
       return { ...state, terminal: 'error', errorMsg: evt.message, footer: null };

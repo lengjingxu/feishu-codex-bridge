@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { CodexAdapter } from './adapter';
 import type { AgentEvent } from '../types';
 
-async function fakeCodex(options: { rejectDesktopMetadata?: boolean } = {}): Promise<string> {
+async function fakeCodex(options: { rejectDesktopMetadata?: boolean; interaction?: 'questions' | 'approval' } = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'codex-adapter-test-'));
   const path = join(dir, 'codex-fake.mjs');
   await writeFile(path, `#!/usr/bin/env node
@@ -14,12 +14,13 @@ if (process.argv.includes('--version')) { console.log('codex-cli test'); process
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const send = (value) => console.log(JSON.stringify(value));
 const rejectDesktopMetadata = ${JSON.stringify(Boolean(options.rejectDesktopMetadata))};
+const interaction = ${JSON.stringify(options.interaction ?? '')};
 let activeThreadId = 'thread-new';
 let activeThreadName = '';
 for await (const line of rl) {
   const msg = JSON.parse(line);
   if (msg.method === 'initialize') send({ id: msg.id, result: {} });
-  if (msg.method === 'thread/list') send({ id: msg.id, result: { data: [{ id: 'thread-existing', name: activeThreadName || '旧会话', preview: '修复卡片', cwd: '/tmp/project', updatedAt: 10, status: { type: 'idle' } }], nextCursor: msg.params.cursor ? null : 'cursor-2', backwardsCursor: null } });
+  if (msg.method === 'thread/list') send({ id: msg.id, result: { data: [{ id: 'thread-existing', name: msg.params.searchTerm ? '匹配会话' : activeThreadName || '旧会话', preview: '修复卡片', cwd: '/tmp/project', updatedAt: 10, status: { type: 'idle' } }], nextCursor: msg.params.cursor ? null : 'cursor-2', backwardsCursor: null } });
   if (msg.method === 'model/list') send({ id: msg.id, result: { data: [{ model: 'gpt-5.6-sol', isDefault: true }] } });
   if (msg.method === 'thread/start') {
     if (rejectDesktopMetadata && msg.params.threadSource) {
@@ -49,6 +50,17 @@ for await (const line of rl) {
   }
   if (msg.method === 'turn/start') {
     send({ id: msg.id, result: { turn: { id: 'turn-1' } } });
+    if (interaction === 'questions') {
+      send({ method: 'item/tool/requestUserInput', id: 500, params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-input', questions: [
+        { id: 'environment', header: '环境', question: '选择环境', isOther: false, isSecret: false, options: [{ label: '测试', description: '使用测试环境' }, { label: '生产', description: '使用生产环境' }] },
+        { id: 'note', header: '说明', question: '补充说明', isOther: false, isSecret: false, options: null }
+      ] } });
+      continue;
+    }
+    if (interaction === 'approval') {
+      send({ method: 'item/commandExecution/requestApproval', id: 501, params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-command', command: 'pnpm test', reason: '运行测试', availableDecisions: ['accept', 'acceptForSession', 'decline', 'cancel'] } });
+      continue;
+    }
     if (activeThreadId === 'legacy-compact') {
       send({ method: 'error', params: { threadId: activeThreadId, error: { message: 'Error running remote compact task: model requires a newer version of Codex' } } });
       continue;
@@ -59,6 +71,18 @@ for await (const line of rl) {
   }
   if (msg.method === 'turn/interrupt') send({ id: msg.id, result: {} });
   if (msg.method === 'thread/archive') send({ id: msg.id, result: {} });
+  if (msg.method === 'thread/unarchive') send({ id: msg.id, result: { thread: { id: msg.params.threadId, name: '已恢复', preview: '恢复成功', cwd: '/tmp/project', updatedAt: 40, status: { type: 'idle' } } } });
+  if (msg.method === 'thread/fork') send({ id: msg.id, result: { thread: { id: 'thread-fork', name: '分支会话', preview: '分支', cwd: msg.params.cwd, updatedAt: 50, status: { type: 'idle' }, forkedFromId: msg.params.threadId } } });
+  if (msg.method === 'thread/compact/start' || msg.method === 'review/start') send({ id: msg.id, result: {} });
+  if (!msg.method && msg.id === 500) {
+    const valid = msg.result?.answers?.environment?.answers?.[0] === '测试' && msg.result?.answers?.note?.answers?.[0] === '继续';
+    send({ method: 'item/agentMessage/delta', params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-1', delta: valid ? '回答已接收' : '回答错误' } });
+    send({ method: 'turn/completed', params: { threadId: activeThreadId, turn: { id: 'turn-1', status: 'completed' } } });
+  }
+  if (!msg.method && msg.id === 501) {
+    send({ method: 'item/agentMessage/delta', params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-1', delta: msg.result?.decision === 'acceptForSession' ? '会话内允许' : '审批错误' } });
+    send({ method: 'turn/completed', params: { threadId: activeThreadId, turn: { id: 'turn-1', status: 'completed' } } });
+  }
 }
 `, 'utf8');
   await chmod(path, 0o700);
@@ -96,6 +120,69 @@ describe('CodexAdapter', () => {
       ],
     });
     await expect(adapter.archiveSession?.('thread-existing')).resolves.toBeUndefined();
+    await expect(adapter.listSessionPage?.('/tmp/project', undefined, '匹配')).resolves.toMatchObject({
+      sessions: [expect.objectContaining({ name: '匹配会话' })],
+    });
+    await expect(adapter.unarchiveSession?.('thread-existing')).resolves.toMatchObject({ name: '已恢复' });
+    await expect(adapter.forkSession?.('thread-existing', '/tmp/project')).resolves.toMatchObject({
+      threadId: 'thread-fork',
+      forkedFromId: 'thread-existing',
+    });
+    await expect(adapter.compactSession?.('thread-existing')).resolves.toBeUndefined();
+    await expect(adapter.reviewSession?.('thread-existing')).resolves.toBeUndefined();
+    await adapter.close();
+  });
+
+  it('round-trips every request_user_input question', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex({ interaction: 'questions' }) });
+    const run = adapter.run({ prompt: '请提问', cwd: '/tmp/project' });
+    const iterator = run.events[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'system' } });
+    const requestEvent = await iterator.next();
+    expect(requestEvent.value).toMatchObject({
+      type: 'ui_request',
+      request: {
+        method: 'form',
+        questions: [
+          { id: 'environment', options: [
+            { label: '测试', description: '使用测试环境' },
+            { label: '生产', description: '使用生产环境' },
+          ] },
+          { id: 'note' },
+        ],
+      },
+    });
+    const requestId = requestEvent.value && requestEvent.value.type === 'ui_request' ? requestEvent.value.request.id : '';
+    expect(run.respondToUi?.(requestId, { answers: { environment: ['测试'], note: ['继续'] } })).toBe(true);
+    const rest: AgentEvent[] = [];
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      rest.push(next.value);
+    }
+    expect(rest).toContainEqual({ type: 'text', delta: '回答已接收' });
+    await adapter.close();
+  });
+
+  it('round-trips session-scoped approval decisions', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex({ interaction: 'approval' }) });
+    const run = adapter.run({ prompt: '请审批', cwd: '/tmp/project' });
+    const iterator = run.events[Symbol.asyncIterator]();
+    await iterator.next();
+    const requestEvent = await iterator.next();
+    expect(requestEvent.value).toMatchObject({
+      type: 'ui_request',
+      request: { method: 'approval', decisions: ['accept', 'acceptForSession', 'decline', 'cancel'] },
+    });
+    const requestId = requestEvent.value && requestEvent.value.type === 'ui_request' ? requestEvent.value.request.id : '';
+    expect(run.respondToUi?.(requestId, { decision: 'acceptForSession' })).toBe(true);
+    const rest: AgentEvent[] = [];
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      rest.push(next.value);
+    }
+    expect(rest).toContainEqual({ type: 'text', delta: '会话内允许' });
     await adapter.close();
   });
 

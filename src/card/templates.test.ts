@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectWelcomeCard, projectsCard, sessionDetailCard, sessionProgressCard, sessionsCard, topicTitle, topicWelcomeCard, welcomeCard } from './templates';
+import { projectWelcomeCard, projectsCard, sessionDetailCard, sessionProgressCard, sessionSearchCard, sessionsCard, topicTitle, topicWelcomeCard, welcomeCard } from './templates';
 import type { SessionDetail } from '../project/types';
 
 function text(card: object): string {
@@ -26,11 +26,19 @@ describe('project-first Feishu cards', () => {
     const sessions = text(sessionsCard('示例项目', [{ threadId: 'thread-1', preview: '修复卡片', status: 'idle', updatedAt: Date.now() }], 'cursor-2'));
     expect(sessions).toContain('继续此会话');
     expect(sessions).toContain('加载更多');
+    expect(sessions).toContain('搜索会话');
     expect(sessions).not.toContain('"content":"归档"');
     const metadata = text(sessionsCard('示例项目', [{ threadId: 'thread-2', preview: '等待输入', status: 'active', activeFlags: ['waitingOnUserInput'], source: 'vscode', forkedFromId: 'thread-0', updatedAt: Date.now() }]));
     expect(metadata).toContain('等待输入');
     expect(metadata).not.toContain('VS Code');
     expect(metadata).not.toContain('分支会话');
+  });
+
+  it('renders a CardKit form for session title search', () => {
+    const card = text(sessionSearchCard('示例项目'));
+    expect(card).toContain('session_search');
+    expect(card).toContain('sessions.search');
+    expect(card).toContain('form_action_type');
   });
 
   it('renders project and topic context without exposing internal ids', () => {
