@@ -101,6 +101,10 @@ export class JsonProjectBindingStore implements ProjectBindingStore {
     return Object.values(this.data.topics).filter((topic) => topic.projectKey === projectKey);
   }
 
+  allTopics(): TopicBinding[] {
+    return Object.values(this.data.topics);
+  }
+
   async clearTopic(chatId: string, topicId: string): Promise<void> {
     delete this.data.topics[topicKey(chatId, topicId)];
     this.schedulePersist();

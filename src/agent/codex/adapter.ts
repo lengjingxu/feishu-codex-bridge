@@ -209,6 +209,10 @@ export class CodexAdapter implements AgentAdapter {
     await this.client.request('thread/archive', { threadId });
   }
 
+  async renameSession(threadId: string, title: string): Promise<void> {
+    await this.setThreadName(threadId, title);
+  }
+
   private async startThread(cwd?: string): Promise<ThreadResponse> {
     const base = { ...(cwd ? { cwd } : {}) };
     try {
@@ -432,7 +436,6 @@ export class CodexAdapter implements AgentAdapter {
         effectiveModel = opts.model ?? (opts.sessionId ? await this.resolveDefaultModel() : undefined);
         if (opts.sessionId) log.info('codex', 'resolved-model', { sessionId: opts.sessionId, model: effectiveModel ?? null });
         let thread: ThreadResponse;
-        let freshThread = false;
         if (opts.sessionId) {
           try {
             thread = await client.request('thread/resume', {
@@ -443,15 +446,17 @@ export class CodexAdapter implements AgentAdapter {
             if (!isMissingRolloutError(err)) throw err;
             queue.push({ type: 'ui_notice', message: '原 Codex 会话没有可恢复的执行记录，已自动新建会话。', level: 'warning' });
             thread = await this.startThread(opts.cwd);
-            freshThread = true;
           }
         } else {
           thread = await this.startThread(opts.cwd);
-          freshThread = true;
         }
         threadId = thread.thread?.id ?? thread.id ?? opts.sessionId;
         if (!threadId) throw new Error('Codex app-server did not return a thread id');
-        if (freshThread) await this.setThreadName(threadId, opts.title);
+        const currentName = typeof thread.thread?.name === 'string' ? thread.thread.name : undefined;
+        const requestedName = opts.title?.replace(/\s+/g, ' ').trim();
+        if (requestedName && currentName !== requestedName) {
+          await this.setThreadName(threadId, requestedName);
+        }
         queue.push({ type: 'system', sessionId: threadId, cwd: opts.cwd, model: effectiveModel });
         const turn = await this.client.request<{ id?: string; turn?: { id?: string } }>('turn/start', {
           threadId,

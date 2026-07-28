@@ -61,6 +61,8 @@ import { isThreadScoped } from './scope';
 import { SessionSyncManager } from '../session/sync';
 import { showProjectWorkbench } from '../project/workbench';
 import { bindNativeTopicSession } from '../project/topic-session';
+import { fetchFeishuTopicTitle, syncBoundTopicTitles } from '../project/topic-title-sync';
+import { threadTitleFromText } from './thread-title';
 
 const DEBOUNCE_MS = 600;
 
@@ -329,6 +331,13 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
     appId: cfg.accounts.app.id,
     procId: controls.processId,
   });
+  if (agent.renameSession && projectBindings?.allTopics) {
+    void syncBoundTopicTitles(channel, agent, projectBindings)
+      .then((result) => log.info('session', 'topic-title-reconcile-complete', result))
+      .catch((err) => log.warn('session', 'topic-title-reconcile-failed', {
+        err: err instanceof Error ? err.message : String(err),
+      }));
+  }
   console.log('正在监听消息。按 Ctrl+C 退出。\n');
 
   // App-level keepalive: 15s probe + wake-up detection + HTTP reachability.
@@ -615,13 +624,20 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     quotes,
     getAgentBackend(controls.cfg) !== 'codex',
   );
-  const title = deriveThreadTitle(batch, attachments.length > 0);
+  const fallbackTitle = deriveThreadTitle(batch, attachments.length > 0);
   log.info('prompt', 'built', { promptChars: prompt.length, quotes: quotes.length });
 
   const project = projectBindings?.findProjectByChat(chatId);
   let topicBinding = findTopicBinding(projectBindings, chatId, threadId, firstMsg.rootId);
   const threadScoped = isThreadScoped(mode, threadId, Boolean(project));
   const nativeTopicId = threadScoped ? (threadId ?? firstMsg.rootId) : undefined;
+  const title = nativeTopicId
+    ? await fetchFeishuTopicTitle(
+      channel,
+      nativeTopicId,
+      firstMsg.rootId ?? (!topicBinding ? firstMsg.messageId : undefined),
+    ) ?? fallbackTitle
+    : fallbackTitle;
   const cwd = project?.cwd ?? workspaces.cwdFor(scope) ?? homedir();
   const resumeFrom = topicBinding?.codexThreadId ?? sessions.resumeFor(scope, cwd);
   if (resumeFrom) {
@@ -1055,10 +1071,8 @@ export function deriveThreadTitle(
   hasAttachments = false,
 ): string {
   const fileKeys = batch.flatMap((m) => m.resources.map((r) => r.fileKey));
-  const text = messageTexts(batch, fileKeys)[0]?.replace(/\s+/g, ' ').trim();
-  if (!text) return hasAttachments ? '查看附件' : '飞书新会话';
-  const chars = Array.from(text);
-  return chars.length <= 48 ? text : `${chars.slice(0, 47).join('')}…`;
+  const text = messageTexts(batch, fileKeys)[0];
+  return threadTitleFromText(text, hasAttachments ? '查看附件' : '飞书新会话');
 }
 
 function messageTexts(batch: NormalizedMessage[], fileKeys: string[]): string[] {

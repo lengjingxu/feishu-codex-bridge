@@ -19,7 +19,7 @@ let activeThreadName = '';
 for await (const line of rl) {
   const msg = JSON.parse(line);
   if (msg.method === 'initialize') send({ id: msg.id, result: {} });
-  if (msg.method === 'thread/list') send({ id: msg.id, result: { data: [{ id: 'thread-existing', name: '旧会话', preview: '修复卡片', cwd: '/tmp/project', updatedAt: 10, status: { type: 'idle' } }], nextCursor: msg.params.cursor ? null : 'cursor-2', backwardsCursor: null } });
+  if (msg.method === 'thread/list') send({ id: msg.id, result: { data: [{ id: 'thread-existing', name: activeThreadName || '旧会话', preview: '修复卡片', cwd: '/tmp/project', updatedAt: 10, status: { type: 'idle' } }], nextCursor: msg.params.cursor ? null : 'cursor-2', backwardsCursor: null } });
   if (msg.method === 'model/list') send({ id: msg.id, result: { data: [{ model: 'gpt-5.6-sol', isDefault: true }] } });
   if (msg.method === 'thread/start') {
     if (rejectDesktopMetadata && msg.params.threadSource) {
@@ -107,6 +107,16 @@ describe('CodexAdapter', () => {
       { type: 'text', delta: '完成' },
       { type: 'done', sessionId: 'thread-new' },
     ]);
+    await adapter.close();
+  });
+
+  it('renames an existing session for Feishu topic title sync', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex() });
+    await adapter.renameSession('thread-existing', ' 飞书话题标题 ');
+    await expect(adapter.listSessions('/tmp/project')).resolves.toContainEqual(expect.objectContaining({
+      threadId: 'thread-existing',
+      name: '飞书话题标题',
+    }));
     await adapter.close();
   });
 
