@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
-import { open, readdir, rm, stat } from 'node:fs/promises';
+import { open, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { paths } from '../config/paths';
 
@@ -329,24 +329,25 @@ export async function gcOldLogs(): Promise<number> {
 }
 
 async function readTail(path: string, maxBytes: number): Promise<string> {
+  let handle;
   try {
-    const st = await stat(path);
+    // Open first and inspect the same file descriptor to avoid a
+    // time-of-check/time-of-use race if the path is replaced.
+    handle = await open(path, 'r');
+    const st = await handle.stat();
     const start = Math.max(0, st.size - maxBytes);
-    const handle = await open(path, 'r');
-    try {
-      const buf = Buffer.alloc(st.size - start);
-      await handle.read(buf, 0, buf.length, start);
-      let content = buf.toString('utf8');
-      if (start > 0) {
-        const nl = content.indexOf('\n');
-        if (nl !== -1) content = content.slice(nl + 1);
-      }
-      return content;
-    } finally {
-      await handle.close();
+    const buf = Buffer.alloc(st.size - start);
+    const { bytesRead } = await handle.read(buf, 0, buf.length, start);
+    let content = buf.subarray(0, bytesRead).toString('utf8');
+    if (start > 0) {
+      const nl = content.indexOf('\n');
+      if (nl !== -1) content = content.slice(nl + 1);
     }
+    return content;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
     throw err;
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
