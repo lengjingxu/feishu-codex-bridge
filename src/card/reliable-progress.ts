@@ -278,7 +278,7 @@ export function renderMarkdownProgressCard(
     body: {
       elements: [
         { tag: 'markdown', content: body },
-        { tag: 'note', elements: [{ tag: 'plain_text', content: note }] },
+        freshnessElement(note),
       ],
     },
   };
@@ -297,20 +297,24 @@ export function renderNonStreamingCard(
       [key: string]: unknown;
     };
     const elements = [...(card.body?.elements ?? [])];
-    elements.push({
-      tag: 'note',
-      elements: [{
-        tag: 'plain_text',
-        content: meta.handoff
-          ? `进度已转移到下一张卡 · ${formatTime(meta.updatedAt)}`
-          : `最后更新：${formatTime(meta.updatedAt)}`,
-      }],
-    });
+    elements.push(freshnessElement(
+      meta.handoff
+        ? `进度已转移到下一张卡 · ${formatTime(meta.updatedAt)}`
+        : `最后更新：${formatTime(meta.updatedAt)}`,
+    ));
     return {
       ...card,
       config: { ...card.config, streaming_mode: false },
       body: { ...card.body, elements },
     };
+  };
+}
+
+function freshnessElement(content: string): object {
+  return {
+    tag: 'markdown',
+    content: `_${content}_`,
+    text_size: 'notation',
   };
 }
 

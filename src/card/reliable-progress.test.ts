@@ -88,9 +88,9 @@ describe('ReliableProgress', () => {
 
     expect(updateCard).toHaveBeenCalledTimes(1);
     const handoffCard = updateCard.mock.calls[0]?.[1] as {
-      body: { elements: Array<{ elements?: Array<{ content?: string }> }> };
+      body: { elements: Array<{ content?: string }> };
     };
-    expect(handoffCard.body.elements.at(-1)?.elements?.[0]?.content).toContain('进度已转移');
+    expect(handoffCard.body.elements.at(-1)?.content).toContain('进度已转移');
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[1]?.[1]).toEqual({ card: expect.any(Object) });
 
@@ -160,12 +160,16 @@ describe('renderMarkdownProgressCard', () => {
       handoff: false,
     }) as {
       config: { streaming_mode: boolean; summary: { content: string } };
-      body: { elements: Array<{ elements?: Array<{ content?: string }> }> };
+      body: { elements: Array<{ tag?: string; content?: string; text_size?: string }> };
     };
 
     expect(card.config.streaming_mode).toBe(false);
     expect(card.config.summary.content).toContain('15:30:00');
-    expect(card.body.elements.at(-1)?.elements?.[0]?.content).toContain('最后更新：15:30:00');
+    expect(card.body.elements.at(-1)).toEqual({
+      tag: 'markdown',
+      content: '_最后更新：15:30:00_',
+      text_size: 'notation',
+    });
   });
 
   it('forces rich progress cards out of streaming mode', () => {
@@ -184,5 +188,9 @@ describe('renderMarkdownProgressCard', () => {
 
     expect(card.config.streaming_mode).toBe(false);
     expect(card.body.elements).toHaveLength(2);
+    expect(card.body.elements.at(-1)).toMatchObject({
+      tag: 'markdown',
+      text_size: 'notation',
+    });
   });
 });
