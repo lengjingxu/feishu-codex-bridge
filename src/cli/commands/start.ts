@@ -8,6 +8,7 @@ import { runRegistrationWizard } from '../../bot/wizard';
 import type { Controls } from '../../commands';
 import { setSecret } from '../../config/keystore';
 import { paths } from '../../config/paths';
+import { persistRegisteredConfig } from '../../config/registration';
 import type { AppConfig } from '../../config/schema';
 import {
   getOmpBinary,
@@ -82,7 +83,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     const fresh = await runRegistrationWizard();
     // Fresh credentials from the wizard arrive as a plaintext secret;
     // immediately encrypt before persisting so disk never holds the raw value.
-    cfg = await persistEncrypted(fresh, configPath);
+    cfg = await persistRegisteredConfig(fresh, configPath);
     console.log(`配置已保存到 ${configPath}\n`);
   }
 
@@ -377,22 +378,4 @@ function needsProviderRewrite(cfg: AppConfig, wrapperPath: string): boolean {
   if (provider.command !== wrapperPath) return true;
   if (!Array.isArray(provider.args) || provider.args.length !== 0) return true;
   return false;
-}
-
-/** Encrypt the (plaintext) secret from a freshly-wizard'd cfg and persist. */
-async function persistEncrypted(cfg: AppConfig, configPath: string): Promise<AppConfig> {
-  const s = cfg.accounts.app.secret;
-  if (typeof s !== 'string') {
-    // Wizard returns plaintext today; if that ever changes, just save as-is.
-    await saveConfig(cfg, configPath);
-    return cfg;
-  }
-  const next = await buildEncryptedAccountConfig(
-    cfg.accounts.app.id,
-    cfg.accounts.app.tenant,
-    cfg.preferences,
-  );
-  await setSecret(secretKeyForApp(cfg.accounts.app.id), s);
-  await saveConfig(next, configPath);
-  return next;
 }

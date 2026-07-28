@@ -5,7 +5,7 @@
 [![Node.js 20.12+](https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[简体中文](README.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[简体中文](README.md) · [Agent install guide](AGENT_INSTALL.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 **Continue local Codex sessions from Feishu or Lark: one project per group,
 one session per topic.**
@@ -59,27 +59,32 @@ Requirements:
 
 - Node.js 20.12 or newer;
 - pnpm;
-- Codex installed and signed in on the host machine;
-- a published Feishu or Lark custom app.
+- Codex installed and signed in on the host machine.
+
+The CLI can create the Feishu or Lark custom app through Feishu's official
+confirmation flow.
 
 ```bash
 git clone https://github.com/lengjingxu/feishu-codex-bridge.git
 cd feishu-codex-bridge
 pnpm install
 pnpm build
-node bin/feishu-omp-bridge.mjs run
+node bin/feishu-omp-bridge.mjs setup
+node bin/feishu-omp-bridge.mjs start
 ```
 
-The first-run wizard asks for the tenant, App ID, and App Secret. The secret
-is stored in a local encrypted keystore and is not written to the repository.
+`setup` shows an official Feishu QR code and confirmation link. The bot
+capability, required permissions, event subscriptions, and card callback are
+pre-filled. After confirmation, the App Secret goes directly into the local
+encrypted keystore and is never printed or written into the repository.
 
-In the Feishu/Lark developer console:
+Running `run` without a configuration enters the same flow. On an existing
+installation, `setup` incrementally grants missing permissions to the current
+app. Use `setup --new-app` only when you intentionally want another app.
 
-1. enable the bot capability;
-2. select long connection event delivery;
-3. subscribe to `im.message.receive_v1`;
-4. grant the required message, chat, and member permissions;
-5. publish the app and restrict its availability to intended users.
+An administrator still needs to review and approve the requested permissions,
+publish the app version, and configure the correct availability scope. The
+Bridge uses Feishu's long connection and does not require a public webhook.
 
 The `feishu-omp-bridge` CLI name is retained for compatibility. The package
 also exposes the `feishu-codex-bridge` command alias.

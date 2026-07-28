@@ -5,7 +5,7 @@
 [![Node.js 20.12+](https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[English](README.en.md) · [安全政策](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
+[English](README.en.md) · [Agent 自动安装](AGENT_INSTALL.md) · [安全政策](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
 
 **在飞书里远程继续本机 Codex：一个项目一个群，一个会话一个话题。**
 
@@ -49,25 +49,27 @@ sequenceDiagram
 
 ## 快速开始
 
-需要 Node.js 20.12+、pnpm、已登录的本机 Codex，以及一个已发布的飞书或 Lark 自建应用。
+需要 Node.js 20.12+、pnpm 和已登录的本机 Codex。飞书或 Lark 自建应用可由 CLI
+通过官方确认页自动创建，不需要手工复制 App Secret。
 
 ```bash
 git clone https://github.com/lengjingxu/feishu-codex-bridge.git
 cd feishu-codex-bridge
 pnpm install
 pnpm build
-node bin/feishu-omp-bridge.mjs run
+node bin/feishu-omp-bridge.mjs setup
+node bin/feishu-omp-bridge.mjs start
 ```
 
-首次启动会引导填写租户、App ID 和 App Secret。App Secret 会进入本机加密密钥库，不会写入项目目录。
+`setup` 会展示飞书官方二维码和确认链接。扫码后，应用名称、机器人能力、Bridge 所需
+权限、事件订阅和卡片回调会自动预填；用户确认后，App Secret 直接进入本机加密密钥库，
+不会显示在终端，也不会写入项目目录。
 
-在飞书开放平台：
+首次直接运行 `run` 时如果没有配置，也会自动进入同一个创建流程。已有安装再次运行
+`setup`，会为当前应用增量补齐权限；要创建全新应用可运行 `setup --new-app`。
 
-1. 启用机器人能力；
-2. 将事件订阅设为“使用长连接接收事件”；
-3. 订阅 `im.message.receive_v1`；
-4. 开通消息、群聊和成员管理所需权限；
-5. 发布应用并设置正确的可用范围。
+管理员仍需在确认页检查并批准权限、发布应用版本，并设置正确的可用范围。Bridge 使用
+飞书长连接，不需要配置公网 Webhook。
 
 > `feishu-omp-bridge` 是为兼容已有安装保留的 CLI 名称；同时提供 `feishu-codex-bridge` 命令别名。
 
