@@ -11,6 +11,11 @@ import { sendManagedCard, updateManagedCard } from '../card/managed';
 import { renderOmpUiRequestCard, renderOmpUiResultCard } from '../card/omp-ui';
 import { renderCard } from '../card/run-renderer';
 import {
+  ReliableProgress,
+  renderMarkdownProgressCard,
+  renderNonStreamingCard,
+} from '../card/reliable-progress';
+import {
   finalizeIfRunning,
   initialState,
   markIdleTimeout,
@@ -749,32 +754,55 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
 
   try {
     if (replyMode === 'card') {
-      await channel.stream(
+      const progress = new ReliableProgress(
+        channel,
         chatId,
-        {
-          card: {
-            initial: renderCard(initialState),
-            producer: async (ctrl) => {
-              await processAgentStream(handle, sessions, scope, cwd, idleTimeoutMs, async (state) => {
-                await ctrl.update(renderCard(filterForPrefs(state)));
-              }, uiHooks);
-            },
-          },
-        },
         sendOpts,
+        renderNonStreamingCard((state) => renderCard(filterForPrefs(state))),
+        initialState,
+        { renderFinal: (state) => renderText(filterForPrefs(state)) },
       );
+      await progress.start();
+      try {
+        const finalState = await processAgentStream(
+          handle,
+          sessions,
+          scope,
+          cwd,
+          idleTimeoutMs,
+          (state) => progress.update(state),
+          uiHooks,
+        );
+        await progress.complete(finalState);
+      } catch (err) {
+        await progress.fail(err);
+        throw err;
+      }
     } else if (replyMode === 'markdown') {
-      await channel.stream(
+      const progress = new ReliableProgress(
+        channel,
         chatId,
-        {
-          markdown: async (ctrl) => {
-            await processAgentStream(handle, sessions, scope, cwd, idleTimeoutMs, async (state) => {
-              await ctrl.setContent(renderText(filterForPrefs(state)));
-            }, uiHooks);
-          },
-        },
         sendOpts,
+        (state, meta) => renderMarkdownProgressCard(filterForPrefs(state), meta),
+        initialState,
+        { renderFinal: (state) => renderText(filterForPrefs(state)) },
       );
+      await progress.start();
+      try {
+        const finalState = await processAgentStream(
+          handle,
+          sessions,
+          scope,
+          cwd,
+          idleTimeoutMs,
+          (state) => progress.update(state),
+          uiHooks,
+        );
+        await progress.complete(finalState);
+      } catch (err) {
+        await progress.fail(err);
+        throw err;
+      }
     } else {
       // text mode: drain the agent stream without sending anything during
       // the run, then post the final rendered text once as a plain markdown
@@ -824,7 +852,7 @@ async function processAgentStream(
   idleTimeoutMs: number | undefined,
   flush: (state: RunState) => Promise<void>,
   hooks?: AgentStreamHooks,
-): Promise<void> {
+): Promise<RunState> {
   let state: RunState = initialState;
 
   // Idle watchdog: OMP going silent for `idleTimeoutMs` is treated as
@@ -952,6 +980,7 @@ async function processAgentStream(
       await handle.run.stop();
     }
   }
+  return state;
 }
 
 /**

@@ -39,7 +39,8 @@ sequenceDiagram
     U->>B: Create a topic and send a task
     B->>C: Create or resume a Codex session
     C-->>B: Stream output, tool progress, approval request
-    B-->>U: Update one status card
+    B-->>U: Update a status card and post milestones
+    B-->>U: Post the final answer as a new message
     U->>B: Approve, answer, or stop
     B->>C: Continue the same session
 ```
@@ -113,6 +114,11 @@ discovers directories from unarchived Codex sessions.
 Historical sessions can be restored from the session card. Status cards
 support manual refresh and an optional five-second auto-sync mode that edits
 the same card instead of sending repeated messages.
+
+Active runs use non-streaming progress cards so long tasks are not constrained
+by CardKit's streaming lifetime. The bridge rotates the card every eight
+minutes, posts rate-limited milestone messages, falls back to ordinary messages
+after an update failure, and always posts the final answer as a new message.
 
 ## Service management
 
