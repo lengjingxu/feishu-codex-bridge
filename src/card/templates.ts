@@ -198,6 +198,7 @@ export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd:
   return shell(topicTitle(displayProjectName, displaySessionTitle), [
     divMd(`项目：**${escapeMd(displayProjectName)}**\n会话：**${escapeMd(displaySessionTitle)}**\n\n现在可以直接在这个话题中输入中文需求。`),
     divMd('当前位置：Codex 工作话题。这里用于实际编程对话，之后直接发送需求即可。'),
+    divMd('会话会保存到本机 Codex。桌面端侧栏若暂未出现，请切换为按时间排序或重启桌面端；这不影响在飞书继续使用。'),
     actions([
       { text: '刷新进度', value: { cmd: 'sync' }, style: 'primary' },
     ]),

@@ -82,6 +82,10 @@ export type AgentEvent =
 
 export interface AgentRunOptions {
   prompt: string;
+  /** Stable client-side id for the user message that starts this turn. */
+  clientUserMessageId?: string;
+  /** User-facing name to apply when this run creates a fresh session. */
+  title?: string;
   cwd?: string;
   sessionId?: string;
   model?: string;

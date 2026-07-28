@@ -41,6 +41,8 @@ describe('project-first Feishu cards', () => {
     expect(project).not.toContain('session.new');
     expect(topic).toContain('示例项目 · 修复卡片');
     expect(topic).toContain('当前位置：Codex 工作话题');
+    expect(topic).toContain('会话会保存到本机 Codex');
+    expect(topic).toContain('按时间排序');
     expect(topic).not.toContain('session.new');
     for (const emoji of ['👋', '📁', '📚', '📊', '🔄', '⏹', '💡']) {
       expect(project).not.toContain(emoji);
