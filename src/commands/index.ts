@@ -157,7 +157,13 @@ export async function tryHandleCommand(ctx: CommandContext): Promise<boolean> {
     '帮助': '/help', '怎么用': '/help',
     '同步': '/sync', '刷新进度': '/sync', '刷新 Codex 进度': '/sync',
   };
-  const normalized = aliases[trimmed] ?? trimmed;
+  // Inside a project topic every natural-language message belongs to Codex.
+  // Keep slash commands available for advanced users, but do not interpret
+  // words such as “状态” or “新建” as Bridge commands inside the conversation.
+  const inProjectTopic = Boolean(
+    ctx.msg.threadId && ctx.projectBindings?.findProjectByChat(ctx.msg.chatId),
+  );
+  const normalized = inProjectTopic ? trimmed : (aliases[trimmed] ?? trimmed);
   if (!normalized.startsWith('/')) return false;
   const parts = normalized.split(/\s+/);
   const cmd = parts[0] ?? '';
@@ -353,7 +359,7 @@ async function handleProject(args: string, ctx: CommandContext): Promise<void> {
     if (!project) return reply(ctx, '没有找到这个项目，请重新打开项目列表。');
     const existing = ctx.projectBindings.projectFor(project.projectKey);
     if (existing?.chatId && existing.chatId !== ctx.msg.chatId) {
-      await reply(ctx, '这个项目已经绑定项目群，请直接到项目群里点击“查看会话”。');
+      await reply(ctx, '这个项目已经绑定项目群。进入项目群后可直接新建话题开始；需要恢复历史对话时再点击“查看会话”。');
       return;
     }
     await openProject(project.projectKey, ctx);
@@ -380,7 +386,7 @@ async function openProject(projectKey: string, ctx: CommandContext): Promise<voi
   if (!project) return reply(ctx, '没有找到这个项目，请刷新后重试。');
   const current = ctx.projectBindings.projectFor(projectKey);
   if (current?.chatId) {
-    await commandFeedback(ctx, '项目群已存在', '这个项目已经绑定项目群，请到项目群里点击“查看会话”。', [
+    await commandFeedback(ctx, '项目群已存在', '这个项目已经绑定项目群。进入项目群后，直接新建话题并发送需求即可开始 Codex 会话。', [
       { text: '查看会话', value: { cmd: 'project.sessions', arg: projectKey }, style: 'primary' },
     ]);
     return;
@@ -397,7 +403,7 @@ async function openProject(projectKey: string, ctx: CommandContext): Promise<voi
     await ctx.projectBindings.bindProject(projectKey, created.chatId);
     const boundProject = ctx.projectBindings.projectFor(projectKey);
     if (boundProject) await showProjectWorkbench(ctx.channel, ctx.projectBindings, boundProject);
-    await commandFeedback(ctx, '项目群已创建', `项目：**${project.name}**\n项目群已经准备好，请进入新群后点击“查看会话”。`, [
+    await commandFeedback(ctx, '项目群已创建', `项目：**${project.name}**\n项目群已经准备好。进入新群后，直接新建话题并发送需求即可开始；“查看会话”用于恢复历史对话。`, [
       { text: '查看会话', value: { cmd: 'project.sessions', arg: projectKey }, style: 'primary' },
     ]);
   } catch (err) {

@@ -78,16 +78,13 @@ export interface ProjectWelcomeInfo { name: string; cwd: string; }
 
 export function projectWelcomeCard(info: ProjectWelcomeInfo): object {
   return shell('项目工作台', [
-    divMd(`项目：**${escapeMd(info.name)}**\n当前位置：项目群\n\n这里用于管理项目和会话。\n代码需求请进入具体话题后发送。\n\n请选择下一步：`),
+    divMd(`项目：**${escapeMd(info.name)}**\n当前位置：项目群\n\n点击飞书的“新建话题”，发送第一条需求，即可自动创建独立的 Codex 会话。\n\n需要恢复历史对话时，再查看会话列表。`),
     actions([
       { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
-      { text: '新建会话', value: { cmd: 'session.new' } },
-    ]),
-    actions([
       { text: '项目状态', value: { cmd: 'project.status' } },
-      { text: '刷新会话', value: { cmd: 'sessions' } },
     ]),
     actions([
+      { text: '刷新会话', value: { cmd: 'sessions' } },
       { text: '切换项目', value: { cmd: 'projects' } },
       { text: '使用说明', value: { cmd: 'help' } },
     ]),
@@ -122,8 +119,8 @@ export interface SessionDetailCardInfo extends SessionCardInfo {
 }
 
 export function sessionsCard(projectName: string, sessions: SessionCardInfo[], nextCursor?: string): object {
-  const elements: object[] = [divMd(`项目：**${escapeMd(projectName)}**\n当前位置：项目群\n共 **${sessions.length}** 个未归档会话。选择一个后，Bridge 会为它创建对应话题。`)];
-  if (sessions.length === 0) elements.push(HR, divMd('暂无可恢复的会话。可以直接新建一个。'));
+  const elements: object[] = [divMd(`项目：**${escapeMd(projectName)}**\n当前位置：项目群\n共 **${sessions.length}** 个未归档会话。选择一个可恢复历史对话；新会话请直接使用飞书“新建话题”。`)];
+  if (sessions.length === 0) elements.push(HR, divMd('暂无可恢复的会话。点击飞书“新建话题”并发送需求即可开始。'));
   for (const session of sessions) {
     const title = session.name?.trim() || session.preview.slice(0, 40) || '未命名会话';
     const status = sessionStatusText(session.status, session.activeFlags);
@@ -138,8 +135,7 @@ export function sessionsCard(projectName: string, sessions: SessionCardInfo[], n
     ]));
   }
   const footer: ButtonSpec[] = [
-    { text: '新建会话', value: { cmd: 'session.new' }, style: 'primary' },
-    { text: '刷新列表', value: { cmd: 'sessions' } },
+    { text: '刷新列表', value: { cmd: 'sessions' }, style: 'primary' },
   ];
   if (nextCursor) footer.splice(1, 0, { text: '加载更多', value: { cmd: 'sessions.page', arg: nextCursor } });
   elements.push(HR, actions(footer));
@@ -207,7 +203,6 @@ export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd:
     ]),
     actions([
       { text: '切换会话', value: { cmd: 'sessions' } },
-      { text: '新建会话', value: { cmd: 'session.new' } },
     ]),
     actions([
       { text: '查看状态', value: { cmd: 'status' } },
@@ -303,7 +298,6 @@ export function statusCard(info: StatusInfo): object {
       HR,
       actions([
         { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
-        { text: '新建会话', value: { cmd: 'session.new' } },
         { text: '使用帮助', value: { cmd: 'help' } },
       ]),
     ]);
@@ -340,8 +334,9 @@ export function helpCard(): object {
       [
         '**推荐用法**',
         '',
-        '在私聊中点击“选择项目”，然后在项目群里点击“查看会话”。',
-        '选择或新建会话后，进入自动创建的话题，直接输入中文需求即可。',
+        '在私聊中点击“选择项目”，进入对应项目群。',
+        '直接点击飞书“新建话题”并发送需求，Bridge 会自动创建独立的 Codex 会话。',
+        '需要恢复历史对话时，点击“查看会话”并选择原会话。',
         '',
         '运行中的任务可以点击卡片上的“停止任务”；需要授权时，直接点击中文确认按钮。',
         '',
@@ -353,7 +348,6 @@ export function helpCard(): object {
     actions([
       { text: '状态', value: { cmd: 'status' }, style: 'primary' },
       { text: '选择项目', value: { cmd: 'projects' } },
-      { text: '新会话', value: { cmd: 'session.new' } },
     ]),
   ]);
 }

@@ -53,6 +53,21 @@ describe('Codex project command workflow', () => {
     expect(send).toHaveBeenCalledWith('chat-dm', { card: expect.any(Object) }, { replyTo: 'message-1' });
   });
 
+  it('leaves natural-language shortcuts inside project topics for Codex', async () => {
+    const send = vi.fn().mockResolvedValue({ messageId: 'message-2' });
+    const bindings = new JsonProjectBindingStore(join(await mkdtemp(join(tmpdir(), 'feishu-command-test-')), 'bindings.json'));
+    bindings.registerProjects([project]);
+    await bindings.bindProject(project.projectKey, 'chat-project');
+    const ctx = context({ send }, bindings, '状态');
+    ctx.msg.chatId = 'chat-project';
+    ctx.msg.chatType = 'group';
+    ctx.msg.threadId = 'topic-native';
+    ctx.chatMode = 'group';
+
+    await expect(tryHandleCommand(ctx)).resolves.toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('updates the clicked project card instead of sending a duplicate card', async () => {
     const send = vi.fn().mockResolvedValue({ messageId: 'message-2' });
     const updateCard = vi.fn().mockResolvedValue(undefined);
