@@ -76,8 +76,8 @@ Codex Session                → 飞书话题
 ## 安装
 
 ```bash
-git clone https://github.com/lengjingxu/feishu-omp-bridge.git
-cd feishu-omp-bridge
+git clone https://github.com/lengjingxu/feishu-codex-bridge.git
+cd feishu-codex-bridge
 pnpm install
 pnpm build
 ```

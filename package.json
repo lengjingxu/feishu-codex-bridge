@@ -2,6 +2,14 @@
   "name": "feishu-omp-bridge",
   "version": "0.1.0",
   "description": "Bridge Feishu/Lark messenger with local Codex app-server or Oh My Pi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lengjingxu/feishu-codex-bridge.git"
+  },
+  "homepage": "https://github.com/lengjingxu/feishu-codex-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/lengjingxu/feishu-codex-bridge/issues"
+  },
   "type": "module",
   "bin": {
     "feishu-omp-bridge": "./bin/feishu-omp-bridge.mjs"
