@@ -58,6 +58,7 @@ export interface ProjectBindingStore {
   findTopicByThread(threadId: string): TopicBinding | undefined;
   projectFor(projectKey: string): Project | undefined;
   topicsForProject(projectKey: string): TopicBinding[];
+  allTopics?(): TopicBinding[];
   clearTopic(chatId: string, topicId: string): Promise<void>;
   flush(): Promise<void>;
 }

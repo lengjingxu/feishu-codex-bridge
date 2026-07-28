@@ -135,5 +135,6 @@ export interface AgentAdapter {
   listProjectRoots?(): Promise<string[]>;
   readSession?(threadId: string): Promise<import('../project/types').SessionDetail>;
   createSession?(cwd: string): Promise<import('../project/types').SessionSummary>;
+  renameSession?(threadId: string, title: string): Promise<void>;
   archiveSession?(threadId: string): Promise<void>;
 }
