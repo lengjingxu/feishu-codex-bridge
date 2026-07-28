@@ -16,6 +16,7 @@ import {
   runServiceUnregister,
 } from './commands/service';
 import { runStart } from './commands/start';
+import { runSetup } from './commands/setup';
 
 const DEFAULT_COMMAND = 'run';
 
@@ -27,6 +28,15 @@ program
   .version(pkg.version, '-v, --version');
 
 // === process-level commands (work directly on bridge processes) ===
+
+program
+  .command('setup')
+  .description('Create a Feishu app or grant the configured app all required permissions')
+  .option('-c, --config <path>', 'path to config file')
+  .option('--new-app', 'create a new app even when a configured app exists')
+  .action(async (opts: { config?: string; newApp?: boolean }) => {
+    await runSetup(opts);
+  });
 
 program
   .command('run')
