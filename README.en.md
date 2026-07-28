@@ -5,7 +5,7 @@
 [![Node.js 20.12+](https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[简体中文](README.md) · [Agent install guide](AGENT_INSTALL.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[Project site](https://lengjingxu.github.io/feishu-codex-bridge/) · [简体中文](README.md) · [Agent install guide](AGENT_INSTALL.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 **Continue local Codex sessions from Feishu or Lark: one project per group,
 one session per topic.**

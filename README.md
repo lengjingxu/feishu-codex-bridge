@@ -5,7 +5,7 @@
 [![Node.js 20.12+](https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[English](README.en.md) · [Agent 自动安装](AGENT_INSTALL.md) · [安全政策](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
+[项目介绍](https://lengjingxu.github.io/feishu-codex-bridge/) · [English](README.en.md) · [Agent 自动安装](AGENT_INSTALL.md) · [安全政策](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
 
 **在飞书里远程继续本机 Codex：一个项目一个群，一个会话一个话题。**
 
