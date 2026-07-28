@@ -1,9 +1,17 @@
 node_modules/
 dist/
 coverage/
+.pnpm-store/
+*.tgz
 *.log
 *.jsonl
 *.tsbuildinfo
+*.tmp
+*.swp
+*.bak
+*.db
+*.sqlite
+*.sqlite3
 
 .env
 .env.*
@@ -12,16 +20,40 @@ coverage/
 *.pem
 *.key
 *.p12
+*.pfx
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
 
 # Local bridge state and agent session data
 .feishu-omp-bridge/
+.feishu-codex-bridge/
+config.json
 secrets.enc
 sessions.json
 project-bindings.json
+workspaces.json
+processes.json
+.keystore.salt
+secrets-getter
+daemon-launcher.cmd
+/logs/
+/media/
+/hosts.json
+/hosts.*.json
 
 .DS_Store
+Thumbs.db
+Desktop.ini
 .idea/
 .vscode/
+.cursor/
+.codex/
+.claude/
+.agents/
+.omo/
+.sisyphus/
 
 # Internal-only: dev smoke scripts and full changelog stay local, do not ship
 scripts/
