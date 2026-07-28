@@ -145,4 +145,72 @@ describe('Codex project command workflow', () => {
     await expect(runCommandHandler('sync', '', ctx)).resolves.toBe(true);
     expect(updateCard).toHaveBeenCalledWith('message-1', expect.objectContaining({ header: expect.any(Object) }));
   });
+
+  it('searches sessions from a CardKit form value', async () => {
+    const updateCard = vi.fn().mockResolvedValue(undefined);
+    const bindings = new JsonProjectBindingStore(join(await mkdtemp(join(tmpdir(), 'feishu-command-test-')), 'bindings.json'));
+    bindings.registerProjects([project]);
+    await bindings.bindProject(project.projectKey, 'chat-project');
+    const listSessionPage = vi.fn().mockResolvedValue({ sessions: [] });
+    const ctx = context({ updateCard }, bindings);
+    ctx.msg.chatId = 'chat-project';
+    ctx.fromCardAction = true;
+    ctx.formValue = { session_search: '卡片修复' };
+    ctx.agent = {
+      ...ctx.agent,
+      listSessions: vi.fn().mockResolvedValue([]),
+      listSessionPage,
+    };
+
+    await runCommandHandler('sessions', 'search', ctx);
+
+    expect(listSessionPage).toHaveBeenCalledWith(project.cwd, undefined, '卡片修复');
+    expect(updateCard).toHaveBeenLastCalledWith('message-1', expect.any(Object));
+  });
+
+  it('starts review and compaction for the current topic, then forks it into a new topic', async () => {
+    const send = vi.fn()
+      .mockResolvedValueOnce({ messageId: 'root-fork' });
+    const updateCard = vi.fn().mockResolvedValue(undefined);
+    const get = vi.fn().mockResolvedValue({ data: { items: [{ thread_id: 'topic-fork' }] } });
+    const bindings = new JsonProjectBindingStore(join(await mkdtemp(join(tmpdir(), 'feishu-command-test-')), 'bindings.json'));
+    bindings.registerProjects([project]);
+    await bindings.bindProject(project.projectKey, 'chat-project');
+    await bindings.bindTopic({
+      chatId: 'chat-project', topicId: 'topic-source', projectKey: project.projectKey,
+      codexThreadId: 'thread-source', createdBy: 'user-1', updatedAt: 1,
+    });
+    const reviewSession = vi.fn().mockResolvedValue(undefined);
+    const compactSession = vi.fn().mockResolvedValue(undefined);
+    const forkSession = vi.fn().mockResolvedValue({
+      threadId: 'thread-fork', name: '分支会话', preview: '分支', cwd: project.cwd,
+      status: 'idle', updatedAt: 2,
+    });
+    const ctx = context({ send, updateCard, rawClient: { im: { v1: { message: { get } } } } }, bindings);
+    ctx.msg.chatId = 'chat-project';
+    ctx.msg.chatType = 'group';
+    ctx.msg.threadId = 'topic-source';
+    ctx.scope = 'chat-project:topic-source';
+    ctx.fromCardAction = true;
+    ctx.agent = {
+      ...ctx.agent,
+      createSession: vi.fn(),
+      listSessions: vi.fn().mockResolvedValue([{
+        threadId: 'thread-source', name: '源会话', preview: '源', cwd: project.cwd,
+        status: 'idle', updatedAt: 1,
+      }]),
+      reviewSession,
+      compactSession,
+      forkSession,
+    };
+
+    await runCommandHandler('session', 'review', ctx);
+    await runCommandHandler('session', 'compact', ctx);
+    await runCommandHandler('session', 'fork', ctx);
+
+    expect(reviewSession).toHaveBeenCalledWith('thread-source');
+    expect(compactSession).toHaveBeenCalledWith('thread-source');
+    expect(forkSession).toHaveBeenCalledWith('thread-source', project.cwd);
+    expect(bindings.findTopic('chat-project', 'topic-fork')).toMatchObject({ codexThreadId: 'thread-fork' });
+  });
 });

@@ -14,7 +14,11 @@ interface TextGroup {
 }
 type Group = ToolGroup | TextGroup;
 
-export function renderCard(state: RunState): object {
+export interface RunCardOptions {
+  sessionActions?: boolean;
+}
+
+export function renderCard(state: RunState, options: RunCardOptions = {}): object {
   const elements: object[] = [];
 
   if (state.reasoning.content) {
@@ -46,8 +50,13 @@ export function renderCard(state: RunState): object {
   }
 
   if (state.terminal === 'running') {
+    const usage = usagePanel(state, options.sessionActions === true);
+    if (usage) elements.push(usage);
     if (state.footer) elements.push(footerStatus(state.footer));
     elements.push(stopButton());
+  } else if (state.terminal === 'done') {
+    elements.push(completionEvidence(state));
+    if (state.sessionId && options.sessionActions) elements.push(completionActions(state));
   }
 
   return {
@@ -185,6 +194,88 @@ function stopButton(): object {
   };
 }
 
+function completionEvidence(state: RunState): object {
+  const tools = state.blocks.filter((block): block is Extract<Block, { kind: 'tool' }> => block.kind === 'tool');
+  const passed = tools.filter((block) => block.tool.status === 'done').length;
+  const failed = tools.filter((block) => block.tool.status === 'error').length;
+  const tests = tools.filter((block) => /\b(?:test|vitest|jest|pytest|cargo test|go test)\b/i.test(JSON.stringify(block.tool.input)));
+  const passedTests = tests.filter((block) => block.tool.status === 'done').length;
+  const failedTests = tests.filter((block) => block.tool.status === 'error').length;
+  const lines = [
+    '**验收证据**',
+    state.ui.statuses['代码改动'] ? `- 代码改动：${state.ui.statuses['代码改动']}` : '- 代码改动：未报告',
+    `- 工具执行：${passed} 成功${failed ? `，${failed} 失败` : ''}`,
+    tests.length
+      ? `- 测试：${passedTests} 通过${failedTests ? `，${failedTests} 失败` : ''}`
+      : '- 测试：未报告',
+    usageSummary(state),
+  ].filter(Boolean);
+  return collapsiblePanel({
+    title: '**任务已完成 · 查看验收信息**',
+    expanded: true,
+    border: failed ? 'red' : 'blue',
+    body: lines.join('\n'),
+  });
+}
+
+function completionActions(state: RunState): object {
+  const actions: object[] = [
+    actionButton('审查当前改动', 'primary', { cmd: 'session.review' }),
+    actionButton('从这里创建分支会话', 'default', { cmd: 'session.fork' }),
+  ];
+  if (contextPercent(state) !== undefined) {
+    actions.push(actionButton('压缩上下文', 'default', { cmd: 'session.compact' }));
+  }
+  return { tag: 'action', actions };
+}
+
+function usagePanel(state: RunState, sessionActions: boolean): object | undefined {
+  const percent = contextPercent(state);
+  if (percent === undefined || percent < 70) return undefined;
+  const level = percent >= 90 ? '高' : '较高';
+  return {
+    tag: 'column_set',
+    flex_mode: 'flow',
+    columns: [
+      {
+        tag: 'column',
+        width: 'weighted',
+        weight: 1,
+        elements: [noteMd(`上下文使用率${level}：**${percent}%**。可压缩后继续，避免接近上限。`)],
+      },
+      ...(state.sessionId && sessionActions ? [{
+        tag: 'column',
+        width: 'auto',
+        elements: [actionButton('压缩上下文', 'default', { cmd: 'session.compact' })],
+      }] : []),
+    ],
+  };
+}
+
+function usageSummary(state: RunState): string {
+  const usage = state.usage;
+  if (!usage) return '- 上下文：未报告';
+  const percent = contextPercent(state);
+  const total = usage.totalTokens === undefined ? '未知' : usage.totalTokens.toLocaleString('en-US');
+  return `- 上下文：${total} tokens${percent === undefined ? '' : `（${percent}%）`}`;
+}
+
+function contextPercent(state: RunState): number | undefined {
+  const total = state.usage?.contextTokens;
+  const window = state.usage?.modelContextWindow;
+  if (!total || !window || window <= 0) return undefined;
+  return Math.min(100, Math.round(total / window * 100));
+}
+
+function actionButton(text: string, type: 'primary' | 'default' | 'danger', value: Record<string, unknown>): object {
+  return {
+    tag: 'button',
+    text: { tag: 'plain_text', content: text },
+    type,
+    behaviors: [{ type: 'callback', value }],
+  };
+}
+
 function footerStatus(status: Exclude<FooterStatus, null>): object {
   const text =
     status === 'thinking'
@@ -210,7 +301,7 @@ function uiContextPanel(ui: UiState): object | undefined {
   if (ui.editorText) lines.push(`**编辑器内容**\n\`\`\`\n${truncate(ui.editorText, 1200)}\n\`\`\``);
   if (lines.length === 0) return undefined;
   return collapsiblePanel({
-    title: '**OMP 状态 / Widget**',
+    title: '**执行状态**',
     expanded: true,
     border: 'blue',
     body: lines.join('\n\n'),

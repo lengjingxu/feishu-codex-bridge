@@ -538,7 +538,26 @@ async function submitToActiveRun(deps: {
   );
   const trimmed = msg.content.trimStart();
   const kind = trimmed.startsWith('!') ? 'steer' : 'follow_up';
-  return activeRuns.submitPrompt(scope, kind, prompt, imagePaths);
+  try {
+    const submitted = await activeRuns.submitPrompt(scope, kind, prompt, imagePaths);
+    if (kind === 'steer') {
+      await channel.send(
+        msg.chatId,
+        { markdown: submitted ? '✓ 已把这条调整加入当前执行。' : '当前任务暂时不能接收执行中调整。' },
+        { replyTo: msg.messageId, ...(msg.threadId ? { replyInThread: true } : {}) },
+      );
+    }
+    return submitted;
+  } catch (err) {
+    if (kind !== 'steer') throw err;
+    log.warn('agent', 'steer-failed', { scope, error: err instanceof Error ? err.message : String(err) });
+    await channel.send(
+      msg.chatId,
+      { markdown: `未能加入当前执行：${err instanceof Error ? err.message : String(err)}` },
+      { replyTo: msg.messageId, ...(msg.threadId ? { replyInThread: true } : {}) },
+    );
+    return true;
+  }
 }
 
 interface RunBatchDeps {
@@ -774,7 +793,9 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
         channel,
         chatId,
         sendOpts,
-        renderNonStreamingCard((state) => renderCard(filterForPrefs(state))),
+        renderNonStreamingCard((state) => renderCard(filterForPrefs(state), {
+          sessionActions: Boolean(project && threadScoped),
+        })),
         initialState,
         { renderFinal: (state) => renderText(filterForPrefs(state)) },
       );
@@ -935,12 +956,15 @@ async function processAgentStream(
           sessions.set(scope, evt.sessionId, effectiveCwd);
           log.info('session', 'set', { sessionId: evt.sessionId });
         }
+        state = reduce(state, evt);
         continue;
       }
       if (evt.type === 'usage') {
         if (evt.costUsd !== undefined) {
           log.info('agent', 'usage', { costUsd: Number(evt.costUsd.toFixed(4)) });
         }
+        state = reduce(state, evt);
+        await flush(state);
         continue;
       }
       if (evt.type === 'ui_request') {

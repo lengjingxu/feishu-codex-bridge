@@ -38,7 +38,8 @@ class AsyncQueue<T> implements AsyncIterable<T> {
 interface PendingUi {
   requestId: string | number;
   method: string;
-  questionId?: string;
+  questionIds?: string[];
+  requestedPermissions?: Record<string, unknown>;
 }
 
 export interface CodexAdapterOptions {
@@ -128,7 +129,7 @@ export class CodexAdapter implements AgentAdapter {
     return sessions;
   }
 
-  async listSessionPage(cwd: string, cursor?: string): Promise<SessionPage> {
+  async listSessionPage(cwd: string, cursor?: string, searchTerm?: string): Promise<SessionPage> {
     const response = await this.client.request<{ data?: Array<Record<string, unknown>>; nextCursor?: string | null }>('thread/list', {
       cwd,
       limit: 50,
@@ -138,6 +139,7 @@ export class CodexAdapter implements AgentAdapter {
       sortDirection: 'desc',
       useStateDbOnly: true,
       ...(cursor ? { cursor } : {}),
+      ...(searchTerm?.trim() ? { searchTerm: searchTerm.trim() } : {}),
     });
     const sessions = (response.data ?? []).map((thread) => mapThread(thread, cwd)).filter((session): session is SessionSummary => session !== undefined);
     return { sessions, ...(response.nextCursor ? { nextCursor: response.nextCursor } : {}) };
@@ -207,6 +209,37 @@ export class CodexAdapter implements AgentAdapter {
 
   async archiveSession(threadId: string): Promise<void> {
     await this.client.request('thread/archive', { threadId });
+  }
+
+  async unarchiveSession(threadId: string): Promise<SessionSummary> {
+    const response = await this.client.request<{ thread?: Record<string, unknown> }>('thread/unarchive', { threadId });
+    const session = response.thread ? mapThread(response.thread, typeof response.thread.cwd === 'string' ? response.thread.cwd : '') : undefined;
+    if (!session) throw new Error('Codex app-server did not return the restored session');
+    return session;
+  }
+
+  async forkSession(threadId: string, cwd?: string): Promise<SessionSummary> {
+    const response = await this.client.request<ThreadResponse>('thread/fork', {
+      threadId,
+      ...(cwd ? { cwd } : {}),
+      persistExtendedHistory: true,
+    });
+    const thread = response.thread;
+    const session = thread ? mapThread(thread, cwd ?? '') : undefined;
+    if (!session) throw new Error('Codex app-server did not return the forked session');
+    return session;
+  }
+
+  async compactSession(threadId: string): Promise<void> {
+    await this.client.request('thread/compact/start', { threadId });
+  }
+
+  async reviewSession(threadId: string): Promise<void> {
+    await this.client.request('review/start', {
+      threadId,
+      delivery: 'inline',
+      target: { type: 'uncommittedChanges' },
+    });
   }
 
   async renameSession(threadId: string, title: string): Promise<void> {
@@ -351,8 +384,19 @@ export class CodexAdapter implements AgentAdapter {
         const diff = typeof params.diff === 'string' ? params.diff : '';
         queue.push({ type: 'ui_status', status: { key: '代码改动', text: diff ? `已生成改动（${diff.split('\n').length} 行）` : '暂无改动' } });
       } else if (message.method === 'thread/tokenUsage/updated') {
-        const usage = params.tokenUsage as { last?: { inputTokens?: number; outputTokens?: number } } | undefined;
-        queue.push({ type: 'usage', inputTokens: usage?.last?.inputTokens, outputTokens: usage?.last?.outputTokens });
+        const usage = params.tokenUsage as {
+          total?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
+          last?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
+          modelContextWindow?: number | null;
+        } | undefined;
+        queue.push({
+          type: 'usage',
+          inputTokens: usage?.last?.inputTokens,
+          outputTokens: usage?.last?.outputTokens,
+          totalTokens: usage?.total?.totalTokens,
+          contextTokens: usage?.last?.totalTokens,
+          modelContextWindow: usage?.modelContextWindow ?? undefined,
+        });
       } else if (message.method === 'model/rerouted') {
         const from = typeof params.fromModel === 'string' ? params.fromModel : '';
         const to = typeof params.toModel === 'string' ? params.toModel : '';
@@ -402,28 +446,84 @@ export class CodexAdapter implements AgentAdapter {
         return;
       }
       const requestId = String(message.id);
-      const firstQuestion = Array.isArray(params.questions) ? params.questions[0] as { id?: string; header?: string; question?: string; options?: Array<{ label?: string }> | null } | undefined : undefined;
-      pendingUi.set(requestId, { requestId: message.id, method: message.method, ...(firstQuestion?.id ? { questionId: firstQuestion.id } : {}) });
-      if (message.method === 'item/tool/requestUserInput' && !firstQuestion) {
+      const questions = Array.isArray(params.questions)
+        ? params.questions.map((raw) => raw as {
+            id?: string;
+            header?: string;
+            question?: string;
+            isOther?: boolean;
+            isSecret?: boolean;
+            options?: Array<{ label?: string; description?: string }> | null;
+          }).filter((question) => typeof question.id === 'string' && question.id.length > 0)
+        : [];
+      pendingUi.set(requestId, {
+        requestId: message.id,
+        method: message.method,
+        ...(questions.length > 0 ? { questionIds: questions.map((question) => question.id!) } : {}),
+        ...(message.method === 'item/permissions/requestApproval' && params.permissions && typeof params.permissions === 'object'
+          ? { requestedPermissions: params.permissions as Record<string, unknown> }
+          : {}),
+      });
+      if (message.method === 'item/tool/requestUserInput' && questions.length === 0) {
         queue.push({ type: 'error', message: 'Codex 的输入请求没有可用问题。' });
         return;
       }
       const command = typeof params.command === 'string' ? `\n\n即将执行：\n\`${params.command}\`` : '';
       const reason = typeof params.reason === 'string' && params.reason ? `\n\n原因：${params.reason}` : '';
-      if (message.method === 'item/tool/requestUserInput' && firstQuestion) {
-        const options = Array.isArray(firstQuestion.options) ? firstQuestion.options.map((option) => String(option.label ?? '')).filter(Boolean) : [];
-        queue.push({ type: 'ui_request', request: options.length > 0
-          ? { id: requestId, method: 'select', title: firstQuestion.header ?? '请选择', options }
-          : { id: requestId, method: 'input', title: firstQuestion.header ?? '请输入', placeholder: firstQuestion.question }, });
+      const grantRoot = typeof params.grantRoot === 'string' && params.grantRoot
+        ? `\n\n写入范围：\n\`${params.grantRoot}\``
+        : '';
+      const permissionSummary = message.method === 'item/permissions/requestApproval' && params.permissions
+        ? `\n\n请求权限：\n\`\`\`json\n${JSON.stringify(params.permissions, null, 2).slice(0, 3000)}\n\`\`\``
+        : '';
+      if (message.method === 'item/tool/requestUserInput') {
+        queue.push({
+          type: 'ui_request',
+          request: {
+            id: requestId,
+            method: 'form',
+            title: questions.length > 1 ? 'Codex 需要补充信息' : questions[0]?.header ?? 'Codex 需要补充信息',
+            questions: questions.map((question, index) => ({
+              id: question.id!,
+              title: question.header?.trim() || `问题 ${index + 1}`,
+              prompt: question.question?.trim() || '请输入',
+              ...(question.isSecret ? { secret: true } : {}),
+              ...(question.isOther ? { allowOther: true } : {}),
+              ...(Array.isArray(question.options) && question.options.length > 0
+                ? {
+                    options: question.options.map((option) => ({
+                      label: String(option.label ?? ''),
+                      ...(option.description ? { description: String(option.description) } : {}),
+                    })).filter((option) => option.label),
+                  }
+                : {}),
+            })),
+          },
+        });
         return;
       }
+      const available = Array.isArray(params.availableDecisions)
+        ? params.availableDecisions.filter((decision): decision is import('../types').AgentApprovalDecision =>
+            decision === 'accept'
+            || decision === 'acceptForSession'
+            || decision === 'decline'
+            || decision === 'cancel'
+            || Boolean(decision && typeof decision === 'object' && (
+              'acceptWithExecpolicyAmendment' in decision || 'applyNetworkPolicyAmendment' in decision
+            )))
+        : [];
+      const fallbackDecisions: Array<'accept' | 'acceptForSession' | 'decline' | 'cancel'> =
+        message.method === 'item/permissions/requestApproval'
+          ? ['accept', 'acceptForSession', 'decline', 'cancel']
+          : ['accept', 'acceptForSession', 'decline', 'cancel'];
       queue.push({
         type: 'ui_request',
         request: {
           id: requestId,
-          method: 'confirm',
+          method: 'approval',
           title: 'Codex 需要你的确认',
-          message: `${command}${reason}`.trim() || 'Codex 请求继续执行。',
+          message: `${command}${reason}${grantRoot}${permissionSummary}`.trim() || 'Codex 请求继续执行。',
+          decisions: available.length > 0 ? available : fallbackDecisions,
         },
       });
     };
@@ -486,11 +586,36 @@ export class CodexAdapter implements AgentAdapter {
         const pending = pendingUi.get(requestId);
         if (!pending) return false;
         pendingUi.delete(requestId);
-        if (pending.method === 'item/tool/requestUserInput' && pending.questionId) {
-          const value = response && 'value' in response ? response.value : '';
-          client.respond(pending.requestId, { answers: { [pending.questionId]: { answers: [value] } } });
+        if (pending.method === 'item/tool/requestUserInput' && pending.questionIds) {
+          const answers = response && 'answers' in response
+            ? response.answers
+            : Object.fromEntries(pending.questionIds.map((questionId) => [
+                questionId,
+                response && 'value' in response ? [response.value] : [],
+              ]));
+          client.respond(pending.requestId, {
+            answers: Object.fromEntries(pending.questionIds.map((questionId) => [
+              questionId,
+              { answers: Array.isArray(answers[questionId]) ? answers[questionId] : [] },
+            ])),
+          });
+        } else if (pending.method === 'item/permissions/requestApproval') {
+          const decision = response && 'decision' in response
+            ? response.decision
+            : response && 'confirmed' in response && response.confirmed ? 'accept' : 'decline';
+          client.respond(pending.requestId, {
+            permissions: decision === 'accept' || decision === 'acceptForSession'
+              ? pending.requestedPermissions ?? {}
+              : {},
+            scope: decision === 'acceptForSession' ? 'session' : 'turn',
+          });
         } else {
-          client.respond(pending.requestId, { decision: response && 'confirmed' in response && response.confirmed ? 'accept' : 'decline' });
+          const decision = response && 'decision' in response
+            ? response.decision
+            : response && 'confirmed' in response && response.confirmed ? 'accept'
+              : response && 'cancelled' in response ? 'cancel'
+                : 'decline';
+          client.respond(pending.requestId, { decision });
         }
         return true;
       },

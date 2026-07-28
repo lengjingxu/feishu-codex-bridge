@@ -24,7 +24,8 @@ webhook and exposes no inbound port.
 | --- | --- |
 | Native topic-to-session mapping | Projects and tasks remain isolated; existing sessions can be resumed |
 | Live status cards and optional auto-sync | Follow tool progress and results away from your computer |
-| Approval and input cards | Handle Codex confirmations directly in chat |
+| Approval and multi-question input cards | Handle one-off/session approvals and structured Codex questions directly in chat |
+| Review, fork, compact, search, and undo archive | Use richer app-server workflows without leaving Feishu |
 | Outbound long connection | No public server, webhook, or inbound port |
 | Access control and encrypted keystore | Limit users, chats, admins, and visible project roots |
 | Codex and OMP backends | Use Codex for new workflows while keeping Oh My Pi compatibility |
@@ -124,6 +125,12 @@ Active runs use non-streaming progress cards so long tasks are not constrained
 by CardKit's streaming lifetime. The bridge rotates the card every eight
 minutes, posts rate-limited milestone messages, falls back to ordinary messages
 after an update failure, and always posts the final answer as a new message.
+
+Prefix a message with `!` while a turn is running to steer that same turn; the
+bridge acknowledges whether Codex accepted it. Completion cards summarize code
+changes, tests/tool calls, and context usage, with actions for review, fork, and
+context compaction. Session cards support title search and undo after archive;
+forking creates and binds a new Feishu topic while preserving the source topic.
 
 ## Service management
 

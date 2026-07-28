@@ -136,10 +136,42 @@ export function sessionsCard(projectName: string, sessions: SessionCardInfo[], n
   }
   const footer: ButtonSpec[] = [
     { text: '刷新列表', value: { cmd: 'sessions' }, style: 'primary' },
+    { text: '搜索会话', value: { cmd: 'sessions.search' } },
   ];
   if (nextCursor) footer.splice(1, 0, { text: '加载更多', value: { cmd: 'sessions.page', arg: nextCursor } });
   elements.push(HR, actions(footer));
   return shell('会话列表', elements);
+}
+
+export function sessionSearchCard(projectName: string): object {
+  return {
+    schema: '2.0',
+    config: { summary: { content: '搜索 Codex 会话' } },
+    body: {
+      elements: [
+        { tag: 'markdown', content: `**搜索会话**\n项目：**${escapeMd(projectName)}**\n按会话标题关键词搜索。` },
+        {
+          tag: 'form',
+          name: 'session_search_form',
+          elements: [
+            {
+              tag: 'input',
+              name: 'session_search',
+              placeholder: { tag: 'plain_text', content: '输入标题关键词' },
+              input_type: 'text',
+            },
+            {
+              tag: 'button',
+              text: { tag: 'plain_text', content: '搜索' },
+              type: 'primary',
+              form_action_type: 'submit',
+              behaviors: [{ type: 'callback', value: { cmd: 'sessions.search' } }],
+            },
+          ],
+        },
+      ],
+    },
+  };
 }
 
 export function sessionDetailCard(projectName: string, detail: SessionDetailCardInfo): object {
