@@ -1268,10 +1268,20 @@ https://github.com/lengjingxu/feishu-codex-bridge
       ];
       let activeStep = 0;
       let timer = 0;
+      let resizeFrame = 0;
       let inView = false;
       let autoEnabled = !reduceMotion;
 
       const isActuallyPlaying = () => autoEnabled && inView && !document.hidden;
+
+      const keepActiveTabVisible = () => {
+        if (stepList.scrollWidth <= stepList.clientWidth) return;
+        const activeTab = steps[activeStep];
+        stepList.scrollTo({
+          left: activeTab.offsetLeft - ((stepList.clientWidth - activeTab.offsetWidth) / 2),
+          behavior: reduceMotion ? "auto" : "smooth",
+        });
+      };
 
       const updatePlayer = () => {
         const playing = isActuallyPlaying();
@@ -1304,13 +1314,7 @@ https://github.com/lengjingxu/feishu-codex-bridge
         live.textContent = announcements[activeStep];
         captionTitle.textContent = captions[activeStep][0];
         captionCopy.textContent = captions[activeStep][1];
-        if (stepList.scrollWidth > stepList.clientWidth) {
-          const activeTab = steps[activeStep];
-          stepList.scrollTo({
-            left: activeTab.offsetLeft - ((stepList.clientWidth - activeTab.offsetWidth) / 2),
-            behavior: reduceMotion ? "auto" : "smooth",
-          });
-        }
+        keepActiveTabVisible();
         updatePlayer();
       };
 
@@ -1333,6 +1337,10 @@ https://github.com/lengjingxu/feishu-codex-bridge
         updatePlayer();
       });
       document.addEventListener("visibilitychange", updatePlayer);
+      window.addEventListener("resize", () => {
+        window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = window.requestAnimationFrame(keepActiveTabVisible);
+      });
 
       if ("IntersectionObserver" in window) {
         const observer = new IntersectionObserver((entries) => {
