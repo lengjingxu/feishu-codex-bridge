@@ -46,7 +46,7 @@ function fakeChannel(options: { updateError?: Error } = {}): {
 describe('ReliableProgress', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('always posts the final answer as a standalone markdown message', async () => {
+  it('keeps the final answer in the card when its final update succeeds', async () => {
     const { channel, send, updateCard } = fakeChannel();
     const progress = new ReliableProgress(
       channel,
@@ -61,13 +61,8 @@ describe('ReliableProgress', () => {
     await progress.update(runningState());
     await progress.complete(doneState('最终结果'));
 
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0]?.[1]).toEqual({ card: expect.any(Object) });
-    expect(send.mock.calls[1]?.[1]).toEqual({ markdown: '最终结果' });
-    expect(send.mock.calls[1]?.[2]).toEqual({
-      replyTo: 'user-message',
-      replyInThread: true,
-    });
     expect(updateCard).toHaveBeenCalled();
   });
 
@@ -117,14 +112,16 @@ describe('ReliableProgress', () => {
     expect(updateCard).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(3);
     expect(send.mock.calls[1]?.[1]).toEqual({
-      markdown: expect.stringContaining('已自动切换为普通消息'),
+      markdown: expect.stringContaining('后续进度将以普通消息发送'),
     });
     expect(send.mock.calls[2]?.[1]).toEqual({ markdown: '最终完成' });
   });
 
-  it('posts completed commentary as a rate-limited milestone message', async () => {
+  it('sends completed commentary only after card delivery has degraded', async () => {
     let now = Date.UTC(2026, 6, 28, 7, 30, 0);
-    const { channel, send } = fakeChannel();
+    const { channel, send } = fakeChannel({
+      updateError: new Error('card update timeout'),
+    });
     const progress = new ReliableProgress(
       channel,
       'chat-1',
@@ -144,12 +141,35 @@ describe('ReliableProgress', () => {
     now += 30_000;
     await progress.update(commentaryThenTool('第二阶段完成'));
 
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(3);
     expect(send.mock.calls[1]?.[1]).toEqual({
-      markdown: expect.stringContaining('第一阶段完成'),
+      markdown: expect.stringContaining('进度卡更新失败'),
+    });
+    expect(send.mock.calls[2]?.[1]).toEqual({
+      markdown: expect.stringContaining('第二阶段完成'),
     });
 
     await progress.complete(doneState());
+  });
+
+  it('sends one final markdown message when the final card update fails', async () => {
+    const { channel, send } = fakeChannel({
+      updateError: new Error('card update timeout'),
+    });
+    const progress = new ReliableProgress(
+      channel,
+      'chat-1',
+      { replyTo: 'user-message', replyInThread: true },
+      renderMarkdownProgressCard,
+      initialState,
+      { rotationMs: 0, updateThrottleMs: 0 },
+    );
+
+    await progress.start();
+    await progress.complete(doneState('最终完成'));
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]?.[1]).toEqual({ markdown: '最终完成' });
   });
 });
 

@@ -33,10 +33,10 @@ export type ProgressCardRenderer = (
  * CardKit streaming cards are automatically closed by Feishu after roughly
  * ten minutes. This controller deliberately sends ordinary non-streaming
  * cards, patches them in place while a run is active, and rotates to a fresh
- * card before the old streaming lifetime would have elapsed. A standalone
- * markdown message is always sent at completion, so the final answer remains
- * visible even if every in-place card update fails or the client has cached an
- * older card revision.
+ * card before the old streaming lifetime would have elapsed. The card is the
+ * single source of truth while updates work. We switch to ordinary messages
+ * only after a card operation fails, so users never have to read the same
+ * answer both in a card and in a separate message.
  */
 export class ReliableProgress {
   private readonly rotationMs: number;
@@ -88,8 +88,14 @@ export class ReliableProgress {
 
   async update(state: RunState): Promise<void> {
     this.latestState = state;
-    if (this.completed || this.degraded) return;
-    await this.maybeSendMilestone(state);
+    if (this.completed) return;
+    // Once a card operation has failed, the card can no longer be trusted as
+    // a delivery surface. Continue with occasional plain-text progress rather
+    // than silently losing a long-running task's updates.
+    if (this.degraded) {
+      await this.maybeSendMilestone(state);
+      return;
+    }
     if (this.updateThrottleMs <= 0 || state.terminal !== 'running') {
       this.clearUpdateTimer();
       await this.enqueue(() => this.patchCurrent(false));
@@ -109,16 +115,23 @@ export class ReliableProgress {
     this.clearTimers();
 
     await this.chain;
+    let deliveredToCard = false;
     if (!this.degraded && this.currentMessageId) {
       try {
         await this.channel.updateCard(
           this.currentMessageId,
           this.renderCard(state, { updatedAt: this.now(), handoff: false }),
         );
+        deliveredToCard = true;
       } catch (err) {
         this.degraded = true;
         log.fail('progress', err, { step: 'final-card-update' });
       }
+    }
+
+    if (deliveredToCard) {
+      log.info('progress', 'final-card-updated', { terminal: state.terminal });
+      return;
     }
 
     const finalBody = this.renderFinal(state).trim() || '（未返回内容）';
@@ -182,14 +195,10 @@ export class ReliableProgress {
     this.clearTimers();
     log.fail('progress', err, { step });
 
-    const body = this.renderFinal(this.latestState).trim();
     await this.channel.send(
       this.chatId,
       {
-        markdown: [
-          '⚠️ 进度卡更新失败，已自动切换为普通消息；任务仍在继续。',
-          body,
-        ].filter(Boolean).join('\n\n'),
+        markdown: '⚠️ 进度卡更新失败，后续进度将以普通消息发送；任务仍在继续。',
       },
       this.sendOptions,
     );
@@ -225,9 +234,9 @@ export class ReliableProgress {
       });
       log.info('progress', 'milestone-message-sent', { chars: content.length });
     } catch (err) {
-      // The live card may still be healthy. A milestone send failure is logged
-      // but does not disable card updates; the final standalone message remains
-      // the delivery guarantee.
+      // This only runs after card delivery has degraded. A milestone send
+      // failure is logged, while the final ordinary message remains the
+      // delivery guarantee.
       log.fail('progress', err, { step: 'milestone-send' });
     }
   }

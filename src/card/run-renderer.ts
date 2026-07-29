@@ -57,6 +57,11 @@ export function renderCard(state: RunState, options: RunCardOptions = {}): objec
   } else if (state.terminal === 'done') {
     elements.push(completionEvidence(state));
     if (state.sessionId && options.sessionActions) elements.push(completionActions(state));
+  } else if (state.sessionId && options.sessionActions) {
+    // A terminal card is often the only card a user keeps open in a topic.
+    // Keep the sync entry available here rather than requiring a scroll back
+    // to the topic welcome card.
+    elements.push(refreshAction());
   }
 
   return {
@@ -220,6 +225,7 @@ function completionEvidence(state: RunState): object {
 
 function completionActions(state: RunState): object {
   const actions: object[] = [
+    actionButton('刷新进度', 'primary', { cmd: 'sync' }),
     actionButton('审查当前改动', 'primary', { cmd: 'session.review' }),
     actionButton('从这里创建分支会话', 'default', { cmd: 'session.fork' }),
   ];
@@ -227,6 +233,16 @@ function completionActions(state: RunState): object {
     actions.push(actionButton('压缩上下文', 'default', { cmd: 'session.compact' }));
   }
   return { tag: 'action', actions };
+}
+
+function refreshAction(): object {
+  return {
+    tag: 'action',
+    actions: [
+      actionButton('刷新进度', 'primary', { cmd: 'sync' }),
+      actionButton('查看状态', 'default', { cmd: 'status' }),
+    ],
+  };
 }
 
 function usagePanel(state: RunState, sessionActions: boolean): object | undefined {
