@@ -1,4 +1,4 @@
-import type { AgentRun, AgentUiResponse } from '../agent/types';
+import type { AgentAdditionalContext, AgentRun, AgentUiResponse } from '../agent/types';
 
 export interface RunHandle {
   run: AgentRun;
@@ -49,9 +49,15 @@ export class ActiveRuns {
     return ok;
   }
 
-  submitPrompt(chatId: string, kind: 'steer' | 'follow_up', message: string, imagePaths?: string[]): Promise<boolean> {
+  submitPrompt(
+    chatId: string,
+    kind: 'steer' | 'follow_up',
+    message: string,
+    imagePaths?: string[],
+    additionalContext?: AgentAdditionalContext,
+  ): Promise<boolean> {
     const h = this.handles.get(chatId);
-    return h?.run.submitPrompt?.(kind, message, imagePaths) ?? Promise.resolve(false);
+    return h?.run.submitPrompt?.(kind, message, imagePaths, additionalContext) ?? Promise.resolve(false);
   }
 
   async stopAll(): Promise<void> {

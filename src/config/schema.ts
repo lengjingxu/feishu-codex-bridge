@@ -103,6 +103,8 @@ export interface AppPreferences {
   enforceProjectRootSandbox?: boolean;
   /** Include raw Feishu routing identifiers in the Agent prompt. */
   includeRoutingIdsInPrompt?: boolean;
+  /** Expose the built-in Feishu Assistant project when using Codex. */
+  enableFeishuAssistantProject?: boolean;
   /** OMP executable name or path. Default: omp. */
   ompBinary?: string;
   /** Optional OMP model passed as `--model`. Empty means OMP config decides. */
@@ -265,6 +267,10 @@ export function getEnforceProjectRootSandbox(cfg: AppConfig): boolean {
 
 export function getIncludeRoutingIdsInPrompt(cfg: AppConfig): boolean {
   return cfg.preferences?.includeRoutingIdsInPrompt === true;
+}
+
+export function getEnableFeishuAssistantProject(cfg: AppConfig): boolean {
+  return getAgentBackend(cfg) === 'codex' && cfg.preferences?.enableFeishuAssistantProject !== false;
 }
 
 export function getOmpModel(cfg: AppConfig): string | undefined {

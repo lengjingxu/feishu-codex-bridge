@@ -9,6 +9,7 @@ import {
   getCodexAppServerBinary,
   resolveCodexAppServerBinary,
   getProjectRoots,
+  getEnableFeishuAssistantProject,
   type AppConfig,
 } from './schema';
 
@@ -54,5 +55,8 @@ describe('Codex project preferences', () => {
     expect(getCodexAppServerBinary(cfg({ codexAppServerBinary: ' /opt/codex ' }))).toBe('/opt/codex');
     expect(resolveCodexAppServerBinary(cfg({ codexAppServerBinary: ' /opt/codex ' }))).toBe('/opt/codex');
     expect(getProjectRoots(cfg({ projectRoots: [' /tmp/a ', '', 3 as unknown as string] }))).toEqual(['/tmp/a']);
+    expect(getEnableFeishuAssistantProject(cfg())).toBe(false);
+    expect(getEnableFeishuAssistantProject(cfg({ agentBackend: 'codex' }))).toBe(true);
+    expect(getEnableFeishuAssistantProject(cfg({ agentBackend: 'codex', enableFeishuAssistantProject: false }))).toBe(false);
   });
 });

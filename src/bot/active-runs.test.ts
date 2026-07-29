@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentRun, AgentUiResponse } from '../agent/types';
+import type { AgentAdditionalContext, AgentRun, AgentUiResponse } from '../agent/types';
 import { ActiveRuns } from './active-runs';
 
 async function* emptyEvents() {
@@ -39,21 +39,22 @@ describe('ActiveRuns OMP UI routing', () => {
 
   it('routes mid-run prompts to the active run', async () => {
     const activeRuns = new ActiveRuns();
-    const prompts: Array<{ kind: string; message: string; imagePaths?: string[] }> = [];
+    const prompts: Array<{ kind: string; message: string; imagePaths?: string[]; additionalContext?: AgentAdditionalContext }> = [];
     const run: AgentRun = {
       events: emptyEvents(),
       stop: async () => {},
       waitForExit: async () => true,
-      async submitPrompt(kind, message, imagePaths) {
-        prompts.push({ kind, message, imagePaths });
+      async submitPrompt(kind, message, imagePaths, additionalContext) {
+        prompts.push({ kind, message, imagePaths, additionalContext });
         return true;
       },
     };
 
     activeRuns.register('scope-1', run);
 
-    await expect(activeRuns.submitPrompt('scope-1', 'follow_up', 'next', ['a.png'])).resolves.toBe(true);
+    const additionalContext = { source: { value: 'context', kind: 'application' as const } };
+    await expect(activeRuns.submitPrompt('scope-1', 'follow_up', 'next', ['a.png'], additionalContext)).resolves.toBe(true);
     expect(activeRuns.has('scope-1')).toBe(true);
-    expect(prompts).toEqual([{ kind: 'follow_up', message: 'next', imagePaths: ['a.png'] }]);
+    expect(prompts).toEqual([{ kind: 'follow_up', message: 'next', imagePaths: ['a.png'], additionalContext }]);
   });
 });

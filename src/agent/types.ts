@@ -82,6 +82,11 @@ export interface AgentHostUriScheme {
   handle(req: { operation: 'read' | 'write'; url: string; content?: string }): Promise<AgentHostUriResult>;
 }
 
+export type AgentAdditionalContext = Record<string, {
+  value: string;
+  kind: 'application' | 'untrusted';
+}>;
+
 export type AgentEvent =
   | { type: 'system'; sessionId?: string; cwd?: string; model?: string }
   | { type: 'text'; delta: string }
@@ -123,13 +128,20 @@ export interface AgentRunOptions {
   stopGraceMs?: number;
   hostTools?: AgentHostTool[];
   hostUriSchemes?: AgentHostUriScheme[];
+  /** Structured client context passed outside the visible user prompt. */
+  additionalContext?: AgentAdditionalContext;
 }
 
 export interface AgentRun {
   readonly events: AsyncIterable<AgentEvent>;
   stop(): Promise<void>;
   respondToUi?(requestId: string, response: AgentUiResponse): boolean;
-  submitPrompt?(kind: 'steer' | 'follow_up', message: string, imagePaths?: string[]): Promise<boolean>;
+  submitPrompt?(
+    kind: 'steer' | 'follow_up',
+    message: string,
+    imagePaths?: string[],
+    additionalContext?: AgentAdditionalContext,
+  ): Promise<boolean>;
   /**
    * Wait up to `timeoutMs` for the agent process to exit on its own.
    * Resolves true if it exited within the window, false if the timer

@@ -46,11 +46,12 @@ import { MediaCache, type LocalAttachment } from '../media/cache';
 import type { SessionStore } from '../session/store';
 import type { WorkspaceStore } from '../workspace/store';
 import type { ProjectCatalog } from '../project/catalog';
-import type { ProjectBindingStore } from '../project/types';
+import type { Project, ProjectBindingStore } from '../project/types';
 import { ActiveRuns, type RunHandle } from './active-runs';
 import { ChatModeCache, type ChatMode } from './chat-mode-cache';
 import { handleCommentMention } from './comments';
 import { createFeishuHostIntegration } from './feishu-host';
+import { buildFeishuTurnContext } from './feishu-context';
 import { expandInteractiveCard } from './interactive-card';
 import { startKeepalive } from './keepalive';
 import { configureNetwork } from './network-config';
@@ -63,6 +64,7 @@ import { SessionSyncManager } from '../session/sync';
 import { showProjectWorkbench } from '../project/workbench';
 import { bindNativeTopicSession } from '../project/topic-session';
 import { fetchFeishuTopicTitle, syncBoundTopicTitles } from '../project/topic-title-sync';
+import { FEISHU_ASSISTANT_PROJECT_KEY } from '../project/assistant';
 import { threadTitleFromText } from './thread-title';
 
 const DEBOUNCE_MS = 600;
@@ -198,6 +200,9 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
 
   const channel = createLarkChannel(opts);
   const media = new MediaCache(channel);
+  const assistantProject = getAgentBackend(cfg) === 'codex'
+    ? await projectCatalog?.get(FEISHU_ASSISTANT_PROJECT_KEY)
+    : undefined;
 
   // Pending → run handoff: while a run is active on a chat, block its pending
   // queue so messages keep accumulating without flushing. When the run ends,
@@ -225,6 +230,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           controls,
           scope,
           mode,
+          projectCatalog,
           projectBindings,
         });
       } catch (err) {
@@ -283,7 +289,14 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
     },
     comment: async (evt) => {
       await withTrace({ chatId: 'comment' }, async () => {
-        await handleCommentMention({ channel, evt, agent, sessions, workspaces }).catch((err) =>
+        await handleCommentMention({
+          channel,
+          evt,
+          agent,
+          sessions,
+          workspaces,
+          defaultCwd: assistantProject?.cwd,
+        }).catch((err) =>
           log.fail('comment', err),
         );
       }).catch((err) => log.fail('comment', err));
@@ -479,13 +492,19 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     return;
   }
 
-  // Codex project mode intentionally does not send unbound DM or project-group
-  // messages to an arbitrary working directory. Guide the user to the card
-  // flow instead; ordinary topic messages are allowed through below.
+  let executionProject = project;
+  // Unbound Feishu entry points belong to the dedicated assistant workspace.
+  // A bound project always wins so Feishu requests keep the local project's
+  // code and history context.
   if (getAgentBackend(controls.cfg) === 'codex') {
-    if (msg.chatType === 'p2p' || (project && !msg.threadId)) {
-      if (project && projectBindings) await showProjectWorkbench(channel, projectBindings, project);
-      else await channel.send(msg.chatId, { card: welcomeCard() }, { replyTo: msg.messageId });
+    if (project && !msg.threadId) {
+      if (projectBindings) await showProjectWorkbench(channel, projectBindings, project);
+      pending.cancel(scope);
+      return;
+    }
+    executionProject ??= await projectCatalog?.get(FEISHU_ASSISTANT_PROJECT_KEY);
+    if (!executionProject && msg.chatType === 'p2p') {
+      await channel.send(msg.chatId, { card: welcomeCard() }, { replyTo: msg.messageId });
       pending.cancel(scope);
       return;
     }
@@ -504,6 +523,7 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     msg,
     scope,
     metadataFirst: getAgentBackend(controls.cfg) !== 'codex',
+    project: executionProject,
   })) {
     log.info('intake', 'submitted-active-run', { scope });
     return;
@@ -520,8 +540,9 @@ async function submitToActiveRun(deps: {
   msg: NormalizedMessage;
   scope: string;
   metadataFirst: boolean;
+  project?: Project;
 }): Promise<boolean> {
-  const { channel, activeRuns, media, msg, scope, metadataFirst } = deps;
+  const { channel, activeRuns, media, msg, scope, metadataFirst, project } = deps;
   if (!activeRuns.has(scope)) return false;
   const resources = msg.resources.map((resource) => ({ messageId: msg.messageId, resource }));
   const attachments = await media.resolve(msg.chatId, resources);
@@ -540,7 +561,13 @@ async function submitToActiveRun(deps: {
   const trimmed = msg.content.trimStart();
   const kind = trimmed.startsWith('!') ? 'steer' : 'follow_up';
   try {
-    const submitted = await activeRuns.submitPrompt(scope, kind, prompt, imagePaths);
+    const submitted = await activeRuns.submitPrompt(
+      scope,
+      kind,
+      prompt,
+      imagePaths,
+      metadataFirst ? undefined : buildFeishuTurnContext([msg], project),
+    );
     if (kind === 'steer') {
       await channel.send(
         msg.chatId,
@@ -572,6 +599,7 @@ interface RunBatchDeps {
   controls: Controls;
   scope: string;
   mode: ChatMode;
+  projectCatalog?: ProjectCatalog;
   projectBindings?: ProjectBindingStore;
 }
 
@@ -593,6 +621,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     controls,
     scope,
     mode,
+    projectCatalog,
     projectBindings,
   } = deps;
   if (batch.length === 0) return;
@@ -648,9 +677,12 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   const fallbackTitle = deriveThreadTitle(batch, attachments.length > 0);
   log.info('prompt', 'built', { promptChars: prompt.length, quotes: quotes.length });
 
-  const project = projectBindings?.findProjectByChat(chatId);
+  const boundProject = projectBindings?.findProjectByChat(chatId);
+  const project = boundProject ?? (getAgentBackend(controls.cfg) === 'codex'
+    ? await projectCatalog?.get(FEISHU_ASSISTANT_PROJECT_KEY)
+    : undefined);
   let topicBinding = findTopicBinding(projectBindings, chatId, threadId, firstMsg.rootId);
-  const threadScoped = isThreadScoped(mode, threadId, Boolean(project));
+  const threadScoped = isThreadScoped(mode, threadId, Boolean(boundProject));
   const nativeTopicId = threadScoped ? (threadId ?? firstMsg.rootId) : undefined;
   const title = nativeTopicId
     ? await fetchFeishuTopicTitle(
@@ -692,6 +724,9 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     stopGraceMs: getAgentStopGraceMs(controls.cfg),
     hostTools: feishuHost.tools,
     hostUriSchemes: feishuHost.uriSchemes,
+    ...(getAgentBackend(controls.cfg) === 'codex'
+      ? { additionalContext: buildFeishuTurnContext(batch, project) }
+      : {}),
   });
   const handle = activeRuns.register(scope, run);
 
@@ -1057,7 +1092,7 @@ export function buildPrompt(
 ): string {
   const fileKeys = batch.flatMap((m) => m.resources.map((r) => r.fileKey));
   const texts = messageTexts(batch, fileKeys);
-  const ctxHeader = buildBridgeContextHeader(batch, includeRoutingIds);
+  const ctxHeader = metadataFirst ? buildBridgeContextHeader(batch, includeRoutingIds) : '';
   const quoteBlock = renderQuotedBlock(quotes);
   const userPart = texts.length > 0
     ? texts.join('\n\n')
@@ -1087,10 +1122,9 @@ export function buildPrompt(
     return [ctxHeader, quoteBlock, ...userParts].filter(Boolean).join('\n\n');
   }
 
-  // Keep the real request first in Codex so it derives a useful desktop
-  // title. Quote and routing metadata stay model-visible without dominating
-  // history.
-  return [...userParts, quoteBlock, ctxHeader].filter(Boolean).join('\n\n');
+  // Codex receives transport metadata through TurnStartParams.additionalContext.
+  // Keep only user-authored content and quoted content in the visible prompt.
+  return [...userParts, quoteBlock].filter(Boolean).join('\n\n');
 }
 
 export function deriveThreadTitle(

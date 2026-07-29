@@ -32,6 +32,8 @@ describe('project-first Feishu cards', () => {
     expect(metadata).toContain('等待输入');
     expect(metadata).not.toContain('VS Code');
     expect(metadata).not.toContain('分支会话');
+    const assistant = text(projectsCard([{ projectKey: 'assistant::feishu', name: 'Feishu Assistant', cwd: '/tmp/assistant', kind: 'feishu-assistant' }]));
+    expect(assistant).toContain('飞书聊天、文档与本地项目协作');
   });
 
   it('renders a CardKit form for session title search', () => {
@@ -47,6 +49,8 @@ describe('project-first Feishu cards', () => {
     expect(project).toContain('项目工作台');
     expect(project).toContain('新建话题');
     expect(project).not.toContain('session.new');
+    const assistant = text(projectWelcomeCard({ name: 'Feishu Assistant', cwd: '/tmp/assistant', kind: 'feishu-assistant' }));
+    expect(assistant).toContain('飞书 Skills / CLI');
     expect(topic).toContain('示例项目 · 修复卡片');
     expect(topic).toContain('当前位置：Codex 工作话题');
     expect(topic).toContain('会话会保存到本机 Codex');

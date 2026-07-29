@@ -30,7 +30,7 @@ describe('Codex prompt presentation', () => {
 
     expect(prompt.startsWith('如何优化呢')).toBe(true);
     expect(prompt.indexOf('<quoted_message')).toBeGreaterThan(prompt.indexOf('如何优化呢'));
-    expect(prompt.indexOf('<bridge_context>')).toBeGreaterThan(prompt.indexOf('<quoted_message'));
+    expect(prompt).not.toContain('<bridge_context>');
   });
 
   it('preserves the metadata-first contract for the OMP backend', () => {
@@ -47,7 +47,7 @@ describe('Codex prompt presentation', () => {
   });
 
   it('supports explicitly opting into routing identifiers for compatibility', () => {
-    const prompt = buildPrompt([message('兼容测试')], [], [], false, true);
+    const prompt = buildPrompt([message('兼容测试')], [], [], true, true);
     expect(prompt).toContain('chat_id: chat-1');
     expect(prompt).toContain('sender_id: user-1');
     expect(prompt).toContain('thread_id: topic-1');

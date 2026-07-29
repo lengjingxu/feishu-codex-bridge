@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { CodexAdapter } from './adapter';
 import type { AgentEvent } from '../types';
 
-async function fakeCodex(options: { rejectDesktopMetadata?: boolean; interaction?: 'questions' | 'approval' } = {}): Promise<string> {
+async function fakeCodex(options: { rejectDesktopMetadata?: boolean; rejectAdditionalContext?: boolean; interaction?: 'questions' | 'approval' } = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'codex-adapter-test-'));
   const path = join(dir, 'codex-fake.mjs');
   await writeFile(path, `#!/usr/bin/env node
@@ -14,6 +14,7 @@ if (process.argv.includes('--version')) { console.log('codex-cli test'); process
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const send = (value) => console.log(JSON.stringify(value));
 const rejectDesktopMetadata = ${JSON.stringify(Boolean(options.rejectDesktopMetadata))};
+const rejectAdditionalContext = ${JSON.stringify(Boolean(options.rejectAdditionalContext))};
 const interaction = ${JSON.stringify(options.interaction ?? '')};
 let activeThreadId = 'thread-new';
 let activeThreadName = '';
@@ -49,6 +50,10 @@ for await (const line of rl) {
     send({ id: msg.id, result: {} });
   }
   if (msg.method === 'turn/start') {
+    if (rejectAdditionalContext && msg.params.additionalContext) {
+      send({ id: msg.id, error: { code: -32602, message: 'unknown field additionalContext: invalid params' } });
+      continue;
+    }
     send({ id: msg.id, result: { turn: { id: 'turn-1' } } });
     if (interaction === 'questions') {
       send({ method: 'item/tool/requestUserInput', id: 500, params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-input', questions: [
@@ -65,7 +70,10 @@ for await (const line of rl) {
       send({ method: 'error', params: { threadId: activeThreadId, error: { message: 'Error running remote compact task: model requires a newer version of Codex' } } });
       continue;
     }
-    const delta = msg.params.clientUserMessageId === 'msg-1' && activeThreadName === '干净标题' ? '兼容完成' : '完成';
+    const hasInjectedContext = msg.params.additionalContext?.['feishu.bridge.turn']?.value === '{"chat":"oc_context"}';
+    const delta = msg.params.clientUserMessageId === 'context-message'
+      ? hasInjectedContext ? '上下文已注入' : '上下文缺失'
+      : msg.params.clientUserMessageId === 'msg-1' && activeThreadName === '干净标题' ? '兼容完成' : '完成';
     send({ method: 'item/agentMessage/delta', params: { threadId: activeThreadId, turnId: 'turn-1', itemId: 'item-1', delta } });
     send({ method: 'turn/completed', params: { threadId: activeThreadId, turn: { id: 'turn-1', status: 'completed' } } });
   }
@@ -220,6 +228,33 @@ describe('CodexAdapter', () => {
       { type: 'text', delta: '兼容完成' },
       { type: 'done', sessionId: 'thread-new' },
     ]);
+    await adapter.close();
+  });
+
+  it('passes structured Feishu context through turn/start', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex() });
+    const run = adapter.run({
+      prompt: '总结群聊',
+      clientUserMessageId: 'context-message',
+      cwd: '/tmp/project',
+      additionalContext: {
+        'feishu.bridge.turn': { value: '{"chat":"oc_context"}', kind: 'application' },
+      },
+    });
+    await expect(collect(run.events)).resolves.toContainEqual({ type: 'text', delta: '上下文已注入' });
+    await adapter.close();
+  });
+
+  it('falls back when an older app-server rejects additionalContext', async () => {
+    const adapter = new CodexAdapter({ binary: await fakeCodex({ rejectAdditionalContext: true }) });
+    const run = adapter.run({
+      prompt: '总结群聊',
+      cwd: '/tmp/project',
+      additionalContext: {
+        'feishu.bridge.turn': { value: '{"chat":"oc_context"}', kind: 'application' },
+      },
+    });
+    await expect(collect(run.events)).resolves.toContainEqual({ type: 'done', sessionId: 'thread-new' });
     await adapter.close();
   });
 
