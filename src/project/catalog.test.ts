@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -27,5 +27,28 @@ describe('LocalProjectCatalog', () => {
     const projects = await new LocalProjectCatalog(cfg([]), 'local', async () => [nested, nested]).list();
     expect(projects).toHaveLength(1);
     expect(projects[0]?.cwd).toBe(await realpath(nested));
+  });
+
+  it('materializes a dedicated Feishu Assistant Codex project', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'feishu-assistant-catalog-'));
+    const assistantRoot = join(root, 'assistant');
+    const config = cfg([]);
+    config.preferences = { agentBackend: 'codex' };
+    const projects = await new LocalProjectCatalog(config, 'local', undefined, assistantRoot).list();
+
+    expect(projects[0]).toMatchObject({
+      projectKey: 'assistant::feishu',
+      name: 'Feishu Assistant',
+      cwd: assistantRoot,
+      kind: 'feishu-assistant',
+      hostId: 'Codex',
+    });
+    const instructions = await readFile(join(assistantRoot, 'AGENTS.md'), 'utf8');
+    expect(instructions).toContain('installed `lark-*` skills');
+    expect(instructions).toContain('transport and session routing only');
+
+    await writeFile(join(assistantRoot, 'AGENTS.md'), 'custom instructions\n');
+    await new LocalProjectCatalog(config, 'local', undefined, assistantRoot).list();
+    expect(await readFile(join(assistantRoot, 'AGENTS.md'), 'utf8')).toBe('custom instructions\n');
   });
 });

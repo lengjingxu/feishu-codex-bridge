@@ -52,6 +52,7 @@ export interface ProjectCardInfo {
   projectKey: string;
   name: string;
   cwd: string;
+  kind?: 'local' | 'feishu-assistant';
   hostId?: string;
   chatId?: string;
 }
@@ -61,7 +62,10 @@ export function projectsCard(projects: ProjectCardInfo[], page = 0, pageSize = 6
   const pageItems = projects.slice(start, start + pageSize);
   const elements: object[] = [divMd(projects.length ? `共 **${projects.length}** 个项目，选择一个开始：` : '暂时没有可用项目。请在 Bridge 配置中添加项目目录。')];
   for (const project of pageItems) {
-    elements.push(HR, divMd(`**${escapeMd(project.name)}**\n状态：${project.chatId ? '已绑定项目群' : '尚未绑定项目群'}\n主机：${escapeMd(project.hostId ?? '本机')}`));
+    const role = project.kind === 'feishu-assistant'
+      ? '\n用途：飞书聊天、文档与本地项目协作（由 Codex 执行）'
+      : '';
+    elements.push(HR, divMd(`**${escapeMd(project.name)}**${role}\n状态：${project.chatId ? '已绑定项目群' : '尚未绑定项目群'}\n主机：${escapeMd(project.hostId ?? '本机')}`));
     elements.push(actions([
       { text: project.chatId ? '打开项目群' : '创建项目群', value: { cmd: 'project.open', arg: project.projectKey }, style: 'primary' },
       ...(project.chatId ? [{ text: '查看会话', value: { cmd: 'project.sessions', arg: project.projectKey } }] : []),
@@ -74,11 +78,18 @@ export function projectsCard(projects: ProjectCardInfo[], page = 0, pageSize = 6
   return shell('本地项目', elements);
 }
 
-export interface ProjectWelcomeInfo { name: string; cwd: string; }
+export interface ProjectWelcomeInfo {
+  name: string;
+  cwd: string;
+  kind?: 'local' | 'feishu-assistant';
+}
 
 export function projectWelcomeCard(info: ProjectWelcomeInfo): object {
+  const guidance = info.kind === 'feishu-assistant'
+    ? '在新话题中直接安排飞书工作。Bridge 会把当前来源注入 Codex；Codex 使用本机飞书 Skills / CLI 完成聊天、文档和项目协作。'
+    : '点击飞书的“新建话题”，发送第一条需求，即可自动创建独立的 Codex 会话。';
   return shell('项目工作台', [
-    divMd(`项目：**${escapeMd(info.name)}**\n当前位置：项目群\n\n点击飞书的“新建话题”，发送第一条需求，即可自动创建独立的 Codex 会话。\n\n需要恢复历史对话时，再查看会话列表。`),
+    divMd(`项目：**${escapeMd(info.name)}**\n当前位置：项目群\n\n${guidance}\n\n需要恢复历史对话时，再查看会话列表。`),
     actions([
       { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
       { text: '项目状态', value: { cmd: 'project.status' } },

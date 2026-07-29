@@ -1,4 +1,4 @@
-import type { AgentAdapter, AgentEvent, AgentRun, AgentRunOptions, AgentUiResponse } from '../types';
+import type { AgentAdapter, AgentAdditionalContext, AgentEvent, AgentRun, AgentRunOptions, AgentUiResponse } from '../types';
 import { log } from '../../core/logger';
 import { CodexAppServerClient, type JsonRpcNotification, type JsonRpcServerRequest } from './app-server';
 import type { SessionActivity, SessionDetail, SessionPage, SessionSummary } from '../../project/types';
@@ -277,8 +277,26 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
+  private async requestTurn<T>(
+    method: 'turn/start' | 'turn/steer',
+    params: Record<string, unknown> & { additionalContext?: AgentAdditionalContext },
+  ): Promise<T> {
+    try {
+      return await this.client.request<T>(method, params);
+    } catch (err) {
+      if (!params.additionalContext || !isAdditionalContextCompatibilityError(err)) throw err;
+      log.warn('codex', 'additional-context-unsupported', {
+        method,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const { additionalContext: _ignored, ...fallback } = params;
+      return this.client.request<T>(method, fallback);
+    }
+  }
+
   run(opts: AgentRunOptions): AgentRun {
     const client = this.client;
+    const requestTurn = this.requestTurn.bind(this);
     const queue = new AsyncQueue<AgentEvent>();
     const pendingUi = new Map<string, PendingUi>();
     let threadId: string | undefined;
@@ -318,11 +336,12 @@ export class CodexAdapter implements AgentAdapter {
           turnId = undefined;
           await this.setThreadName(threadId, opts.title);
           queue.push({ type: 'system', sessionId: threadId, cwd: opts.cwd });
-          const turn = await client.request<{ id?: string; turn?: { id?: string } }>('turn/start', {
+          const turn = await requestTurn<{ id?: string; turn?: { id?: string } }>('turn/start', {
             threadId,
             input: [{ type: 'text', text: opts.prompt, text_elements: [] }],
             ...(opts.clientUserMessageId ? { clientUserMessageId: opts.clientUserMessageId } : {}),
             ...(opts.cwd ? { cwd: opts.cwd } : {}),
+            ...(opts.additionalContext ? { additionalContext: opts.additionalContext } : {}),
           });
           turnId = turn.turn?.id ?? turn.id;
         } catch (err) {
@@ -558,12 +577,13 @@ export class CodexAdapter implements AgentAdapter {
           await this.setThreadName(threadId, requestedName);
         }
         queue.push({ type: 'system', sessionId: threadId, cwd: opts.cwd, model: effectiveModel });
-        const turn = await this.client.request<{ id?: string; turn?: { id?: string } }>('turn/start', {
+        const turn = await requestTurn<{ id?: string; turn?: { id?: string } }>('turn/start', {
           threadId,
           input: [{ type: 'text', text: opts.prompt, text_elements: [] }],
           ...(opts.clientUserMessageId ? { clientUserMessageId: opts.clientUserMessageId } : {}),
           ...(opts.cwd ? { cwd: opts.cwd } : {}),
           ...(opts.sessionId && effectiveModel && !replacementStarted ? { model: effectiveModel } : {}),
+          ...(opts.additionalContext ? { additionalContext: opts.additionalContext } : {}),
         });
         turnId = turn.turn?.id ?? turn.id;
       } catch (err) {
@@ -619,12 +639,26 @@ export class CodexAdapter implements AgentAdapter {
         }
         return true;
       },
-      async submitPrompt(kind: 'steer' | 'follow_up', message: string): Promise<boolean> {
+      async submitPrompt(
+        kind: 'steer' | 'follow_up',
+        message: string,
+        _imagePaths?: string[],
+        additionalContext?: AgentAdditionalContext,
+      ): Promise<boolean> {
         if (!threadId || !turnId || settled) return false;
         if (kind === 'steer') {
-          await client.request('turn/steer', { threadId, expectedTurnId: turnId, input: [{ type: 'text', text: message, text_elements: [] }] });
+          await requestTurn('turn/steer', {
+            threadId,
+            expectedTurnId: turnId,
+            input: [{ type: 'text', text: message, text_elements: [] }],
+            ...(additionalContext ? { additionalContext } : {}),
+          });
         } else {
-          const response = await client.request<{ turn?: { id?: string } }>('turn/start', { threadId, input: [{ type: 'text', text: message, text_elements: [] }] });
+          const response = await requestTurn<{ turn?: { id?: string } }>('turn/start', {
+            threadId,
+            input: [{ type: 'text', text: message, text_elements: [] }],
+            ...(additionalContext ? { additionalContext } : {}),
+          });
           if (response.turn?.id) turnId = response.turn.id;
         }
         return true;
@@ -642,6 +676,12 @@ export class CodexAdapter implements AgentAdapter {
 function isMissingRolloutError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /no rollout found|rollout not found|rollout.*missing/i.test(message);
+}
+
+function isAdditionalContextCompatibilityError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /additionalContext|additional_context/i.test(message)
+    && /unknown|unexpected|unsupported|invalid params?/i.test(message);
 }
 
 function isThreadNotLoadedError(err: unknown): boolean {

@@ -396,10 +396,13 @@ async function openProject(projectKey: string, ctx: CommandContext): Promise<voi
     return;
   }
   try {
+    const isAssistant = project.kind === 'feishu-assistant';
     const created = await createBoundChat({
       channel: ctx.channel,
       name: `Codex · ${project.name}`,
-      description: `Codex 项目：${project.name}\n路径：${project.cwd}`,
+      description: isAssistant
+        ? 'Codex 飞书个人助理：Bridge 负责连接与上下文，Codex 负责理解和执行。'
+        : `Codex 项目：${project.name}\n路径：${project.cwd}`,
       inviteOpenId: ctx.msg.senderId,
       threadMode: true,
     });

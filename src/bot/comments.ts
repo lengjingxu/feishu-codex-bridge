@@ -5,6 +5,7 @@ import { log } from '../core/logger';
 import type { SessionStore } from '../session/store';
 import type { WorkspaceStore } from '../workspace/store';
 import { addCommentReaction, removeCommentReaction } from './reaction';
+import { buildFeishuDocumentContext } from './feishu-context';
 
 export interface CommentDeps {
   channel: LarkChannel;
@@ -12,6 +13,7 @@ export interface CommentDeps {
   agent: AgentAdapter;
   sessions: SessionStore;
   workspaces: WorkspaceStore;
+  defaultCwd?: string;
 }
 
 // File types supported by drive.v1.fileComment.get; other types (slides,
@@ -59,7 +61,7 @@ interface CommentContext {
  * a reply in the same comment thread.
  */
 export async function handleCommentMention(deps: CommentDeps): Promise<void> {
-  const { channel, evt, agent, sessions, workspaces } = deps;
+  const { channel, evt, agent, sessions, workspaces, defaultCwd } = deps;
   // Log every comment event we receive, regardless of whether we'll act on it.
   // `mentionedBot` and `replyId` here let us tell apart top-level comments
   // from thread replies (the latter requires SDK ≥ 1.65.0-alpha.0).
@@ -111,7 +113,7 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
   // probably won't do filesystem work for doc replies but we keep a sane
   // default in case it does.
   const synthChatId = `doc:${evt.fileToken}`;
-  const cwd = workspaces.cwdFor(synthChatId) ?? homedir();
+  const cwd = workspaces.cwdFor(synthChatId) ?? defaultCwd ?? homedir();
   const resumeFrom = sessions.resumeFor(synthChatId, cwd);
   log.info('comment', 'session', { synthChatId, resumeFrom: resumeFrom ?? null, cwd });
 
@@ -124,7 +126,18 @@ export async function handleCommentMention(deps: CommentDeps): Promise<void> {
     : false;
 
   try {
-    const run = agent.run({ prompt, sessionId: resumeFrom, cwd });
+    const run = agent.run({
+      prompt,
+      sessionId: resumeFrom,
+      cwd,
+      additionalContext: buildFeishuDocumentContext({
+        fileToken: evt.fileToken,
+        fileType: evt.fileType,
+        commentId: evt.commentId,
+        replyId: evt.replyId,
+        operatorOpenId: evt.operator.openId,
+      }),
+    });
     let answer = '';
     let errorMsg: string | undefined;
     let terminal = false;

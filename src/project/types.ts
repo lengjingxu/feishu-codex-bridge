@@ -2,6 +2,7 @@ export interface Project {
   projectKey: string;
   name: string;
   cwd: string;
+  kind?: 'local' | 'feishu-assistant';
   hostId?: string;
   chatId?: string;
   /** Root Feishu message used as the single project-group workbench. */

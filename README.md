@@ -144,6 +144,7 @@ Codex Session                → 飞书话题
   "preferences": {
     "agentBackend": "codex",
     "enforceProjectRootSandbox": true,
+    "enableFeishuAssistantProject": true,
     "projectRoots": [
       "/Users/you/projects",
       "/Users/you/work"
@@ -153,10 +154,26 @@ Codex Session                → 飞书话题
 ```
 
 `projectRoots` 是允许在飞书项目卡中展示的额外目录。Bridge 还会从未归档的 Codex 历史会话中发现项目目录。
+Codex 模式还会默认创建并置顶一个 **Feishu Assistant** 专用项目，目录为
+`~/.feishu-omp-bridge/projects/feishu-assistant/`。这个目录是普通 Codex Project：项目级
+`AGENTS.md` 只定义助理职责，聊天、文档、知识库、任务等操作仍由 Codex 选择本机已安装的
+`lark-*` Skills 和 `lark-cli` 完成。设置 `enableFeishuAssistantProject: false` 可隐藏这个内置项目。
+
+Bridge 不实现另一套飞书能力与审批层。每一轮只把当前 `chat`、`topic`、`message`、`sender`
+和项目绑定作为 app-server `additionalContext` 交给 Codex；用户正文仍保持为干净的 user prompt，
+工具权限、命令执行和写操作审批继续由 Codex 管理。旧版 app-server 如果不支持
+`additionalContext`，Bridge 会记录兼容告警并自动降级为不带结构化来源的正常执行。
+
+路由优先级如下：已绑定项目群始终进入对应本地项目；绑定到 Feishu Assistant 的项目群进入
+该专用项目；未绑定项目的机器人私聊、普通群中的明确 `@机器人` 请求、云文档中的
+`@机器人` 评论，默认也使用 Feishu Assistant 的 cwd 和 Codex 会话历史。项目群顶层消息仍只
+展示工作台，只有进入话题后才会创建或恢复实际 Codex 会话。
+
 Codex 模式默认只允许 `/cd` 切换到 `projectRoots` 内的真实路径，并会检查符号链接是否越界。
 如需兼容旧的自由切换行为，可显式设置 `enforceProjectRootSandbox` 为 `false`，但不建议在远程使用场景中关闭。
-Bridge 默认不会把 `chat_id`、`sender_id`、`thread_id` 放进 Agent prompt；只有明确设置
-`includeRoutingIdsInPrompt` 为 `true` 才会恢复这些路由标识。
+Bridge 默认不会把 `chat_id`、`sender_id`、`thread_id` 拼进可见 prompt。Codex 通过上述
+`additionalContext` 接收来源；兼容 OMP 时，只有明确设置 `includeRoutingIdsInPrompt` 为 `true`
+才会把这些路由标识恢复到 OMP prompt。
 
 推荐先用启动向导生成完整配置，再只修改 `preferences`。不要把真实配置复制到仓库。
 
@@ -276,6 +293,7 @@ Bridge 的运行数据默认位于 `~/.feishu-omp-bridge/`：
 | `secrets.enc` | 加密后的 App Secret |
 | `sessions.json` | 飞书范围到 Agent Session 的映射 |
 | `project-bindings.json` | 项目群、话题和 Codex Session 的映射 |
+| `projects/feishu-assistant/` | Feishu Assistant 专用 Codex Project 与项目级说明 |
 | `logs/` | 结构化运行日志 |
 | `media/` | 飞书附件缓存 |
 

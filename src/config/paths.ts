@@ -16,6 +16,7 @@ export const paths = {
   secretsGetterScript: join(appDir, 'secrets-getter'),
   mediaDir: join(appDir, 'media'),
   ompSessionsDir: join(appDir, 'omp-sessions'),
+  feishuAssistantProjectDir: join(appDir, 'projects', 'feishu-assistant'),
 };
 
 export const legacyPaths = {
