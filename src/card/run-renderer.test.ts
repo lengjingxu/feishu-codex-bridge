@@ -22,6 +22,7 @@ describe('run completion evidence card', () => {
     state = reduce(state, { type: 'done', sessionId: 'thread-1' });
     const completed = JSON.stringify(renderCard(state, { sessionActions: true }));
     expect(completed).toContain('验收证据');
+    expect(completed).toContain('刷新进度');
     expect(completed).toContain('20 行');
     expect(completed).toContain('1 成功');
     expect(completed).toContain('session.review');
