@@ -99,6 +99,10 @@ export interface AppPreferences {
   codexAppServerBinary?: string;
   /** Local project roots exposed by the Feishu project picker. */
   projectRoots?: string[];
+  /** When enabled, /cd and agent cwd must resolve inside projectRoots. */
+  enforceProjectRootSandbox?: boolean;
+  /** Include raw Feishu routing identifiers in the Agent prompt. */
+  includeRoutingIdsInPrompt?: boolean;
   /** OMP executable name or path. Default: omp. */
   ompBinary?: string;
   /** Optional OMP model passed as `--model`. Empty means OMP config decides. */
@@ -247,6 +251,20 @@ export function getProjectRoots(cfg: AppConfig): string[] {
   const roots = cfg.preferences?.projectRoots;
   if (!Array.isArray(roots)) return [];
   return roots.filter((root): root is string => typeof root === 'string' && root.trim() !== '').map((root) => root.trim());
+}
+
+export function getEnforceProjectRootSandbox(cfg: AppConfig): boolean {
+  if (typeof cfg.preferences?.enforceProjectRootSandbox === 'boolean') {
+    return cfg.preferences.enforceProjectRootSandbox;
+  }
+  // Codex project mode is project-first and should not silently become an
+  // arbitrary filesystem controller. OMP retains its historical /cd behavior
+  // unless the operator opts into the stricter policy.
+  return getAgentBackend(cfg) === 'codex';
+}
+
+export function getIncludeRoutingIdsInPrompt(cfg: AppConfig): boolean {
+  return cfg.preferences?.includeRoutingIdsInPrompt === true;
 }
 
 export function getOmpModel(cfg: AppConfig): string | undefined {

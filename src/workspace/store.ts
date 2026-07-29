@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { paths } from '../config/paths';
+import { writeAtomicFile } from '../config/atomic-file';
 import { log } from '../core/logger';
 
 interface WorkspaceData {
@@ -67,8 +67,7 @@ export class WorkspaceStore {
   private schedulePersist(): void {
     this.saving = this.saving
       .then(async () => {
-        await mkdir(dirname(this.path), { recursive: true });
-        await writeFile(this.path, `${JSON.stringify(this.data, null, 2)}\n`, 'utf8');
+        await writeAtomicFile(this.path, `${JSON.stringify(this.data, null, 2)}\n`);
       })
       .catch((err: unknown) => {
         log.fail('workspace', err, { step: 'persist' });

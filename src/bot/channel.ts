@@ -30,6 +30,7 @@ import type { AppConfig } from '../config/schema';
 import {
   getAgentStopGraceMs,
   getAgentBackend,
+  getIncludeRoutingIdsInPrompt,
   getOmpModel,
   getMaxConcurrentRuns,
   getMessageReplyMode,
@@ -642,6 +643,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     attachments,
     quotes,
     getAgentBackend(controls.cfg) !== 'codex',
+    getIncludeRoutingIdsInPrompt(controls.cfg),
   );
   const fallbackTitle = deriveThreadTitle(batch, attachments.length > 0);
   log.info('prompt', 'built', { promptChars: prompt.length, quotes: quotes.length });
@@ -1051,10 +1053,11 @@ export function buildPrompt(
   attachments: LocalAttachment[],
   quotes: QuotedContext[] = [],
   metadataFirst = false,
+  includeRoutingIds = false,
 ): string {
   const fileKeys = batch.flatMap((m) => m.resources.map((r) => r.fileKey));
   const texts = messageTexts(batch, fileKeys);
-  const ctxHeader = buildBridgeContextHeader(batch);
+  const ctxHeader = buildBridgeContextHeader(batch, includeRoutingIds);
   const quoteBlock = renderQuotedBlock(quotes);
   const userPart = texts.length > 0
     ? texts.join('\n\n')
@@ -1105,17 +1108,18 @@ function messageTexts(batch: NormalizedMessage[], fileKeys: string[]): string[] 
     .filter(Boolean);
 }
 
-function buildBridgeContextHeader(batch: NormalizedMessage[]): string {
+function buildBridgeContextHeader(batch: NormalizedMessage[], includeRoutingIds: boolean): string {
   const m = batch[0];
   if (!m) return '';
   const lines = [
     '<bridge_context>',
-    `chat_id: ${m.chatId}`,
     `chat_type: ${m.chatType}`,
-    `sender_id: ${m.senderId}`,
   ];
   if (m.senderName) lines.push(`sender_name: ${m.senderName}`);
-  if (m.threadId) lines.push(`thread_id: ${m.threadId}`);
+  if (includeRoutingIds) {
+    lines.splice(1, 0, `chat_id: ${m.chatId}`, `sender_id: ${m.senderId}`);
+    if (m.threadId) lines.push(`thread_id: ${m.threadId}`);
+  }
   lines.push('</bridge_context>');
   return lines.join('\n');
 }

@@ -98,6 +98,7 @@ After the first run, edit `~/.feishu-omp-bridge/config.json`:
 {
   "preferences": {
     "agentBackend": "codex",
+    "enforceProjectRootSandbox": true,
     "projectRoots": [
       "/Users/you/projects",
       "/Users/you/work"
@@ -107,7 +108,12 @@ After the first run, edit `~/.feishu-omp-bridge/config.json`:
 ```
 
 `projectRoots` adds directories to the project picker. The bridge also
-discovers directories from unarchived Codex sessions.
+discovers directories from unarchived Codex sessions. Codex mode restricts
+`/cd` to real paths inside `projectRoots` by default, including a symlink
+escape check. Set `enforceProjectRootSandbox` to `false` only when the legacy
+unrestricted behavior is intentional. Raw Feishu routing identifiers
+(`chat_id`, `sender_id`, and `thread_id`) are omitted from Agent prompts by
+default; set `includeRoutingIdsInPrompt` to `true` only for compatibility.
 
 ## Feishu workflow
 

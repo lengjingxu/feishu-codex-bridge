@@ -1,9 +1,8 @@
-import { randomBytes } from 'node:crypto';
-import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { paths } from './paths';
 import type { AppConfig, AppPreferences, TenantBrand } from './schema';
 import { secretKeyForApp } from './schema';
+import { writeAtomicFile } from './atomic-file';
 
 export async function loadConfig(path: string = paths.configFile): Promise<Partial<AppConfig>> {
   try {
@@ -88,41 +87,10 @@ export async function ensureSecretsGetterWrapper(): Promise<string> {
     `# Forwards exec-provider requests to: node bridge secrets get\n` +
     `exec ${sq(node)} ${sq(bridgeEntry)} secrets get "$@"\n`;
 
-  await writePrivateAtomic(wrapperPath, content, 0o700);
+  await writeAtomicFile(wrapperPath, content, 0o700);
   return wrapperPath;
 }
 
 export async function saveConfig(cfg: AppConfig, path: string = paths.configFile): Promise<void> {
-  await writePrivateAtomic(path, `${JSON.stringify(cfg, null, 2)}\n`, 0o600);
-}
-
-/**
- * Write a private file without a predictable-name or permission window.
- *
- * `open(..., 'wx', mode)` creates the temporary file atomically and refuses
- * to follow an existing path. A random suffix prevents stale files from
- * blocking a later write. Renaming the completed inode preserves its mode.
- */
-async function writePrivateAtomic(path: string, content: string, mode: number): Promise<void> {
-  const parent = dirname(path);
-  await mkdir(parent, { recursive: true, mode: 0o700 });
-  const tmp = `${path}.tmp-${process.pid}-${randomBytes(8).toString('hex')}`;
-  let handle;
-  try {
-    handle = await open(tmp, 'wx', mode);
-    await handle.writeFile(content, 'utf8');
-    await handle.sync();
-  } catch (err) {
-    await rm(tmp, { force: true }).catch(() => undefined);
-    throw err;
-  } finally {
-    await handle?.close().catch(() => undefined);
-  }
-
-  try {
-    await rename(tmp, path);
-  } catch (err) {
-    await rm(tmp, { force: true }).catch(() => undefined);
-    throw err;
-  }
+  await writeAtomicFile(path, `${JSON.stringify(cfg, null, 2)}\n`, 0o600);
 }

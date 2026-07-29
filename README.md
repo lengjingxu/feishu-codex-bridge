@@ -143,6 +143,7 @@ Codex Session                → 飞书话题
 {
   "preferences": {
     "agentBackend": "codex",
+    "enforceProjectRootSandbox": true,
     "projectRoots": [
       "/Users/you/projects",
       "/Users/you/work"
@@ -152,6 +153,10 @@ Codex Session                → 飞书话题
 ```
 
 `projectRoots` 是允许在飞书项目卡中展示的额外目录。Bridge 还会从未归档的 Codex 历史会话中发现项目目录。
+Codex 模式默认只允许 `/cd` 切换到 `projectRoots` 内的真实路径，并会检查符号链接是否越界。
+如需兼容旧的自由切换行为，可显式设置 `enforceProjectRootSandbox` 为 `false`，但不建议在远程使用场景中关闭。
+Bridge 默认不会把 `chat_id`、`sender_id`、`thread_id` 放进 Agent prompt；只有明确设置
+`includeRoutingIdsInPrompt` 为 `true` 才会恢复这些路由标识。
 
 推荐先用启动向导生成完整配置，再只修改 `preferences`。不要把真实配置复制到仓库。
 

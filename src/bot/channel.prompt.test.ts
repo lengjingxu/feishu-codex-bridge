@@ -39,6 +39,20 @@ describe('Codex prompt presentation', () => {
     expect(prompt.indexOf('继续处理')).toBeGreaterThan(prompt.indexOf('</bridge_context>'));
   });
 
+  it('does not expose raw Feishu routing identifiers by default', () => {
+    const prompt = buildPrompt([message('脱敏测试')], []);
+    expect(prompt).not.toContain('chat-1');
+    expect(prompt).not.toContain('user-1');
+    expect(prompt).not.toContain('topic-1');
+  });
+
+  it('supports explicitly opting into routing identifiers for compatibility', () => {
+    const prompt = buildPrompt([message('兼容测试')], [], [], false, true);
+    expect(prompt).toContain('chat_id: chat-1');
+    expect(prompt).toContain('sender_id: user-1');
+    expect(prompt).toContain('thread_id: topic-1');
+  });
+
   it('derives a compact user-facing title from the actual message', () => {
     expect(deriveThreadTitle([message('  如何   优化飞书 Codex 会话  ')])).toBe('如何 优化飞书 Codex 会话');
     expect(Array.from(deriveThreadTitle([message('很长的标题'.repeat(20))])).length).toBeLessThanOrEqual(48);
