@@ -302,6 +302,376 @@
     .runway-step h3 { margin: 0; font-size: 24px; letter-spacing: -.03em; }
     .runway-step p { max-width: 650px; margin: 0; color: var(--muted); line-height: 1.7; }
 
+    .product-demo {
+      overflow: hidden;
+      border: 1px solid oklch(24% 0.03 155 / 13%);
+      border-radius: 28px;
+      background: oklch(98% 0.008 240);
+      box-shadow: 0 32px 80px oklch(35% 0.04 240 / 14%);
+    }
+    .demo-controls {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      padding: 15px;
+      border-bottom: 1px solid oklch(24% 0.03 155 / 11%);
+      background: oklch(99% 0.006 240);
+    }
+    .demo-step-list {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(118px, 1fr));
+      gap: 5px;
+      min-width: 0;
+    }
+    .demo-step {
+      position: relative;
+      min-width: 0;
+      padding: 12px 13px 14px;
+      border: 0;
+      border-radius: 11px;
+      color: oklch(47% 0.025 245);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+      transition: color .28s var(--ease-out), background-color .28s var(--ease-out), transform .28s var(--ease-out);
+    }
+    .demo-step:hover { color: oklch(25% 0.04 245); background: oklch(95% 0.015 240); }
+    .demo-step.is-active {
+      color: oklch(25% 0.04 245);
+      background: oklch(92% 0.035 245);
+      transform: translateY(-1px);
+    }
+    .demo-step span { display: block; }
+    .demo-step-number { margin-bottom: 6px; color: oklch(58% 0.18 255); font-size: 11px; font-weight: 850; }
+    .demo-step-title { overflow: hidden; font-size: 13px; font-weight: 780; text-overflow: ellipsis; white-space: nowrap; }
+    .demo-step::after {
+      content: "";
+      position: absolute;
+      right: 13px;
+      bottom: 7px;
+      left: 13px;
+      height: 2px;
+      border-radius: 999px;
+      background: oklch(58% 0.18 255);
+      transform: scaleX(0);
+      transform-origin: left;
+    }
+    .product-demo[data-playing="true"] .demo-step.is-active::after {
+      animation: demo-progress 4.2s linear both;
+    }
+    .demo-player {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding-right: 3px;
+    }
+    .demo-icon-button {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid oklch(24% 0.03 155 / 12%);
+      border-radius: 50%;
+      color: oklch(31% 0.035 245);
+      background: oklch(98% 0.008 240);
+      cursor: pointer;
+      transition: transform .24s var(--ease-out), background-color .24s var(--ease-out);
+    }
+    .demo-icon-button:hover { transform: translateY(-2px); background: oklch(93% 0.03 245); }
+    .demo-icon-button svg { width: 16px; height: 16px; }
+    .demo-counter {
+      min-width: 54px;
+      color: oklch(48% 0.025 245);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+    .demo-canvas {
+      position: relative;
+      min-height: 650px;
+      display: grid;
+      place-items: center;
+      padding: clamp(22px, 4vw, 48px);
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 16% 14%, oklch(89% 0.07 255 / 70%), transparent 28%),
+        radial-gradient(circle at 86% 82%, oklch(90% 0.11 126 / 56%), transparent 26%),
+        oklch(94% 0.014 240);
+    }
+    .demo-canvas::before,
+    .demo-canvas::after {
+      content: "";
+      position: absolute;
+      border: 1px solid oklch(58% 0.12 255 / 18%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .demo-canvas::before { width: 360px; height: 360px; left: -180px; bottom: -205px; }
+    .demo-canvas::after { width: 220px; height: 220px; top: -112px; right: -88px; }
+    .feishu-window {
+      position: relative;
+      width: min(100%, 990px);
+      height: 560px;
+      overflow: hidden;
+      border: 1px solid oklch(35% 0.035 245 / 18%);
+      border-radius: 18px;
+      background: oklch(99% 0.006 240);
+      box-shadow: 0 28px 70px oklch(30% 0.05 245 / 20%);
+    }
+    .feishu-topbar {
+      height: 42px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 0 14px;
+      border-bottom: 1px solid oklch(35% 0.035 245 / 10%);
+      background: oklch(97% 0.01 240);
+    }
+    .window-dots { display: flex; gap: 6px; }
+    .window-dots i { width: 8px; height: 8px; border-radius: 50%; background: oklch(78% 0.02 245); }
+    .window-dots i:first-child { background: oklch(70% 0.15 35); }
+    .window-dots i:nth-child(2) { background: oklch(79% 0.14 90); }
+    .window-dots i:last-child { background: oklch(73% 0.14 145); }
+    .feishu-topbar strong { color: oklch(42% 0.025 245); font-size: 12px; }
+    .demo-online { justify-self: end; display: flex; align-items: center; gap: 7px; color: oklch(45% 0.08 153); font-size: 11px; font-weight: 720; }
+    .demo-online::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: oklch(67% 0.17 150); }
+    .feishu-scene {
+      height: calc(100% - 42px);
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      animation: scene-in .52s var(--ease-out) both;
+    }
+    .feishu-sidebar {
+      min-width: 0;
+      padding: 14px 10px;
+      border-right: 1px solid oklch(35% 0.035 245 / 9%);
+      background: oklch(96% 0.012 240);
+    }
+    .sidebar-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 8px 14px;
+      color: oklch(32% 0.035 245);
+      font-size: 12px;
+      font-weight: 780;
+    }
+    .user-avatar,
+    .chat-avatar,
+    .message-avatar {
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      color: oklch(99% 0.006 240);
+      font-weight: 850;
+    }
+    .user-avatar { width: 28px; height: 28px; border-radius: 9px; background: oklch(58% 0.18 255); font-size: 11px; }
+    .sidebar-label { margin: 13px 9px 7px; color: oklch(56% 0.025 245); font-size: 10px; font-weight: 760; }
+    .chat-row {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      gap: 9px;
+      align-items: center;
+      padding: 9px;
+      border-radius: 9px;
+      color: oklch(43% 0.03 245);
+      font-size: 12px;
+    }
+    .chat-row.active { color: oklch(27% 0.045 245); background: oklch(89% 0.055 255); font-weight: 760; }
+    .chat-row.new { animation: group-arrives .58s var(--ease-out) both; }
+    .chat-avatar { width: 30px; height: 30px; border-radius: 9px; background: oklch(58% 0.18 255); font-size: 12px; }
+    .chat-avatar.project { background: oklch(38% 0.09 155); }
+    .chat-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .feishu-main { min-width: 0; display: grid; grid-template-rows: 58px minmax(0, 1fr); background: oklch(99% 0.006 240); }
+    .conversation-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 0 22px;
+      border-bottom: 1px solid oklch(35% 0.035 245 / 9%);
+    }
+    .conversation-title strong { display: block; color: oklch(27% 0.04 245); font-size: 14px; }
+    .conversation-title span { display: block; margin-top: 3px; color: oklch(55% 0.025 245); font-size: 10px; }
+    .head-action { padding: 7px 10px; border-radius: 8px; color: oklch(50% 0.15 255); background: oklch(92% 0.035 255); font-size: 11px; font-weight: 780; }
+    .conversation {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+    }
+    .message-list {
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      padding: 22px 28px;
+    }
+    .message-row { display: flex; align-items: flex-start; gap: 10px; animation: bubble-in .52s var(--ease-out) both; }
+    .message-row.user { justify-content: flex-end; animation-delay: .08s; }
+    .message-avatar { width: 30px; height: 30px; border-radius: 10px; background: oklch(32% 0.055 155); font-size: 11px; }
+    .message-avatar.agent { background: oklch(58% 0.18 255); }
+    .message-bubble {
+      max-width: min(78%, 520px);
+      padding: 10px 13px;
+      border-radius: 4px 13px 13px 13px;
+      color: oklch(29% 0.03 245);
+      background: oklch(95% 0.012 240);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .message-row.user .message-bubble { border-radius: 13px 4px 13px 13px; background: oklch(88% 0.06 255); font-weight: 700; }
+    .message-name { margin-bottom: 4px; color: oklch(53% 0.04 245); font-size: 10px; font-weight: 760; }
+    .project-picker {
+      width: min(100%, 480px);
+      padding: 16px;
+      border: 1px solid oklch(35% 0.035 245 / 12%);
+      border-radius: 13px;
+      background: oklch(99% 0.006 240);
+      box-shadow: 0 12px 30px oklch(35% 0.04 245 / 9%);
+      animation: card-in .58s .16s var(--ease-out) both;
+    }
+    .project-picker h3 { margin: 0; color: oklch(26% 0.04 245); font-size: 14px; letter-spacing: -.01em; }
+    .project-picker > p { margin: 5px 0 13px; color: oklch(53% 0.025 245); font-size: 11px; }
+    .project-choices { display: grid; gap: 6px; }
+    .project-choice {
+      position: relative;
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 9px;
+      border: 1px solid oklch(35% 0.035 245 / 9%);
+      border-radius: 9px;
+      color: oklch(31% 0.035 245);
+      background: oklch(98% 0.008 240);
+      font-size: 11px;
+    }
+    .project-choice.selected { border-color: oklch(58% 0.18 255 / 55%); background: oklch(93% 0.035 255); }
+    .project-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; color: oklch(99% 0.006 240); background: oklch(38% 0.09 155); font-size: 10px; font-weight: 850; }
+    .project-choice b { display: block; font-size: 12px; }
+    .project-choice small { display: block; margin-top: 2px; color: oklch(57% 0.02 245); }
+    .choice-arrow { color: oklch(58% 0.18 255); font-size: 16px; }
+    .demo-pointer {
+      position: absolute;
+      right: 44px;
+      bottom: -7px;
+      width: 22px;
+      height: 27px;
+      filter: drop-shadow(0 3px 2px oklch(25% 0.04 245 / 18%));
+      animation: pointer-tap 1.45s .7s var(--ease-out) infinite;
+    }
+    .creation-card,
+    .session-card {
+      width: min(100%, 470px);
+      overflow: hidden;
+      border: 1px solid oklch(35% 0.035 245 / 12%);
+      border-radius: 13px;
+      background: oklch(99% 0.006 240);
+      box-shadow: 0 12px 30px oklch(35% 0.04 245 / 9%);
+      animation: card-in .58s .14s var(--ease-out) both;
+    }
+    .creation-card { padding: 16px; }
+    .success-mark { width: 34px; height: 34px; display: grid; place-items: center; margin-bottom: 11px; border-radius: 50%; color: oklch(99% 0.006 240); background: oklch(64% 0.16 151); font-weight: 900; }
+    .creation-card h3, .session-card h3 { margin: 0; color: oklch(26% 0.04 245); font-size: 14px; }
+    .creation-card p { margin: 6px 0 12px; color: oklch(52% 0.025 245); font-size: 11px; line-height: 1.55; }
+    .open-group { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 8px; color: oklch(99% 0.006 240); background: oklch(58% 0.18 255); font-size: 11px; font-weight: 780; }
+    .topic-empty {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding-bottom: 10px;
+      text-align: center;
+    }
+    .topic-empty-mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 14px; border-radius: 18px 7px 18px 7px; color: oklch(58% 0.18 255); background: oklch(91% 0.04 255); font-size: 24px; font-weight: 850; transform: rotate(-3deg); }
+    .topic-empty h3 { margin: 0; color: oklch(31% 0.035 245); font-size: 15px; }
+    .topic-empty p { max-width: 330px; margin: 7px auto 0; color: oklch(55% 0.025 245); font-size: 11px; line-height: 1.55; }
+    .composer {
+      margin: 0 24px 20px;
+      padding: 11px 12px;
+      border: 1px solid oklch(58% 0.18 255 / 42%);
+      border-radius: 12px;
+      background: oklch(99% 0.006 240);
+      box-shadow: 0 0 0 3px oklch(58% 0.18 255 / 9%);
+      animation: composer-in .46s .1s var(--ease-out) both;
+    }
+    .composer-label { display: flex; justify-content: space-between; color: oklch(55% 0.025 245); font-size: 10px; }
+    .typed-line { width: max-content; max-width: calc(100% - 8px); margin-top: 9px; overflow: hidden; color: oklch(28% 0.035 245); font-size: 12px; font-weight: 680; white-space: nowrap; clip-path: inset(0 100% 0 0); animation: type-reveal 1.2s .45s steps(18, end) forwards; }
+    .typed-line::after { content: ""; display: inline-block; width: 1px; height: 1.15em; margin-left: 2px; vertical-align: -2px; background: oklch(58% 0.18 255); animation: caret-blink .8s infinite; }
+    .composer-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: oklch(55% 0.025 245); font-size: 10px; }
+    .send-topic { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: oklch(99% 0.006 240); background: oklch(58% 0.18 255); font-size: 14px; animation: send-pulse 1.4s 1.7s var(--ease-out) both; }
+    .session-head { padding: 14px 15px 12px; background: oklch(94% 0.025 255); }
+    .session-head-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .session-badge { display: inline-flex; align-items: center; gap: 5px; color: oklch(45% 0.11 154); font-size: 10px; font-weight: 800; }
+    .session-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: oklch(64% 0.16 151); }
+    .session-head p { margin: 6px 0 0; color: oklch(53% 0.025 245); font-size: 10px; }
+    .session-body { padding: 14px 15px 15px; }
+    .session-event { display: flex; justify-content: space-between; gap: 16px; color: oklch(42% 0.03 245); font-size: 11px; }
+    .session-event span:last-child { color: oklch(57% 0.025 245); }
+    .session-progress { height: 5px; margin-top: 11px; overflow: hidden; border-radius: 999px; background: oklch(90% 0.02 245); }
+    .session-progress::after { content: ""; display: block; width: 64%; height: 100%; border-radius: inherit; background: oklch(58% 0.18 255); transform-origin: left; animation: progress-grow 1.1s .35s var(--ease-out) both; }
+    .composer-static {
+      margin: 0 24px 20px;
+      padding: 11px 13px;
+      border: 1px solid oklch(35% 0.035 245 / 12%);
+      border-radius: 11px;
+      color: oklch(60% 0.022 245);
+      background: oklch(98% 0.008 240);
+      font-size: 11px;
+    }
+    .demo-caption {
+      position: absolute;
+      right: clamp(34px, 5vw, 72px);
+      bottom: 18px;
+      left: clamp(34px, 5vw, 72px);
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      gap: 22px;
+      color: oklch(41% 0.03 245);
+      font-size: 11px;
+      pointer-events: none;
+    }
+    .demo-caption strong { color: oklch(26% 0.04 245); }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @keyframes demo-progress { to { transform: scaleX(1); } }
+    @keyframes scene-in { from { opacity: 0; transform: translateY(14px) scale(.992); } }
+    @keyframes bubble-in { from { opacity: 0; transform: translateY(10px); } }
+    @keyframes card-in { from { opacity: 0; transform: translateY(14px) scale(.985); } }
+    @keyframes group-arrives { from { opacity: 0; transform: translateX(-10px); } }
+    @keyframes composer-in { from { opacity: 0; transform: translateY(12px); } }
+    @keyframes type-reveal { to { clip-path: inset(0 0 0 0); } }
+    @keyframes caret-blink { 50% { opacity: 0; } }
+    @keyframes pointer-tap {
+      0%, 28% { opacity: 0; transform: translate(12px, 14px) scale(1.06); }
+      42%, 64% { opacity: 1; transform: translate(0, 0) scale(1); }
+      53% { transform: translate(0, 2px) scale(.9); }
+      82%, 100% { opacity: 0; transform: translate(-4px, -6px) scale(1); }
+    }
+    @keyframes send-pulse {
+      0% { transform: scale(1); }
+      45% { transform: scale(.9); }
+      70% { transform: scale(1.08); box-shadow: 0 0 0 7px oklch(58% 0.18 255 / 13%); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; }
+    }
+    @keyframes progress-grow { from { transform: scaleX(.08); } to { transform: scaleX(1); } }
+
     .agent-task {
       margin-top: 54px;
       display: grid;
@@ -393,6 +763,12 @@
       .runway-step { grid-template-columns: 70px 1fr; }
       .runway-step p { grid-column: 2; }
       .agent-task { grid-template-columns: 1fr; }
+      .demo-controls { grid-template-columns: 1fr; }
+      .demo-step-list { overflow-x: auto; grid-template-columns: repeat(5, 180px); padding-bottom: 4px; scrollbar-width: thin; }
+      .demo-player { justify-content: flex-end; }
+      .demo-canvas { min-height: 610px; }
+      .feishu-window { height: 530px; }
+      .demo-caption { display: none; }
     }
     @media (max-width: 600px) {
       .shell { width: min(100% - 28px, 1200px); }
@@ -415,10 +791,32 @@
       .official-flow { transform: none; }
       .security { gap: 36px; border-radius: 24px 8px 24px 8px; }
       .footer-row { display: grid; }
+      .product-demo { margin-right: -8px; margin-left: -8px; border-radius: 19px; }
+      .demo-controls { padding: 10px; }
+      .demo-step-list { grid-template-columns: repeat(5, 156px); }
+      .demo-step { padding: 10px 11px 13px; }
+      .demo-canvas { min-height: 560px; padding: 12px 8px; }
+      .feishu-window { height: 510px; border-radius: 14px; }
+      .feishu-topbar { grid-template-columns: 1fr auto; }
+      .feishu-topbar strong { display: none; }
+      .feishu-scene { grid-template-columns: 56px minmax(0, 1fr); }
+      .feishu-sidebar { padding: 12px 7px; }
+      .sidebar-user { padding: 0 7px 12px; }
+      .sidebar-user > span:last-child, .sidebar-label, .chat-row > span:last-child { display: none; }
+      .chat-row { grid-template-columns: 30px; padding: 7px; }
+      .conversation-head { padding: 0 14px; }
+      .head-action { display: none; }
+      .message-list { padding: 17px 14px; }
+      .message-bubble { max-width: 88%; }
+      .project-picker { padding: 12px; }
+      .project-choice { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; padding: 7px; }
+      .project-icon { width: 28px; height: 28px; }
+      .composer, .composer-static { margin-right: 12px; margin-left: 12px; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       *, *::before, *::after { transition: none !important; }
+      *, *::before, *::after { animation: none !important; }
     }
   </style>
 </head>
@@ -428,7 +826,7 @@
       <a class="brand" href="#top"><span class="brand-mark">FC</span> Feishu Codex Bridge</a>
       <div class="nav-links">
         <a class="nav-link" href="#capabilities">核心能力</a>
-        <a class="nav-link" href="#use">怎么使用</a>
+        <a class="nav-link" href="#use">产品演示</a>
         <a class="nav-link" href="#install">自动安装</a>
         <a class="github-link" href="https://github.com/lengjingxu/feishu-codex-bridge" target="_blank" rel="noreferrer" aria-label="在 GitHub 查看源代码">
           <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2.23c-3.23.7-3.91-1.37-3.91-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.72 1.27 3.38.97.1-.75.41-1.27.74-1.56-2.58-.29-5.29-1.29-5.29-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.05 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.76 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.72 5.39-5.31 5.68.42.36.79 1.07.79 2.16v3.2c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg>
@@ -445,7 +843,7 @@
           <p class="hero-copy">把本机 Codex 接入飞书。一个项目一个群，一个会话一个话题。用手机查看实时进度、处理审批、补充输入，并继续同一个上下文。</p>
           <div class="hero-actions">
             <button class="button js-copy" type="button" data-copy-target="agentPrompt">复制给 Agent 安装 <span aria-hidden="true">↗</span></button>
-            <a class="button secondary" href="https://github.com/lengjingxu/feishu-codex-bridge" target="_blank" rel="noreferrer">查看源代码</a>
+            <a class="button secondary" href="#use">看完整使用流程</a>
           </div>
           <div class="micro-proof" aria-label="产品特性">
             <span>代码和会话留在本机</span>
@@ -498,15 +896,252 @@
 
     <section class="section" id="use">
       <div class="section-heading">
-        <h2>实际怎么用</h2>
-        <p>电脑上运行 Bridge，人在手机或飞书桌面端工作。日常使用不需要命令、Webhook 配置，也不用每次重新选择本地目录。</p>
+        <h2>五步，从项目到会话</h2>
+        <p>这不是概念图。下面按真实飞书操作还原一次完整使用过程：主 Agent 负责找到项目和创建群，项目群里的每个话题负责启动并承载一个独立 Codex Session。</p>
       </div>
-      <div class="runway">
-        <article class="runway-step"><h3>私聊机器人，选择项目</h3><p>发送“项目”或点击欢迎卡，从最近使用的 Codex 项目中选择一个。Bridge 自动创建并绑定名为“Codex · 项目名”的私有话题群。</p></article>
-        <article class="runway-step"><h3>新建话题，发出任务</h3><p>进入项目群，直接点击飞书“新建话题”并写下需求。首条消息会创建 Codex Session；每个话题都是一条独立工作线，无需 @机器人。</p></article>
-        <article class="runway-step"><h3>看进度，处理审批</h3><p>离开电脑后继续在话题中查看工具执行和阶段结果。遇到批准、用户输入或停止请求，直接在同一张飞书卡片上处理。</p></article>
-        <article class="runway-step"><h3>继续追问或恢复历史</h3><p>在原话题里发送下一条消息，就会继续原 Session。也可以从“查看会话”恢复电脑上的历史 Codex 会话，再从手机接着做。</p></article>
+
+      <div class="product-demo" data-product-demo data-playing="false">
+        <div class="demo-controls">
+          <div class="demo-step-list" role="tablist" aria-label="飞书使用流程">
+            <button class="demo-step is-active" id="demoStep1" type="button" role="tab" aria-selected="true" aria-controls="demoScene" data-demo-step="0">
+              <span class="demo-step-number">01</span>
+              <span class="demo-step-title">告诉主 Agent“项目”</span>
+            </button>
+            <button class="demo-step" id="demoStep2" type="button" role="tab" aria-selected="false" aria-controls="demoScene" data-demo-step="1">
+              <span class="demo-step-number">02</span>
+              <span class="demo-step-title">得到项目清单</span>
+            </button>
+            <button class="demo-step" id="demoStep3" type="button" role="tab" aria-selected="false" aria-controls="demoScene" data-demo-step="2">
+              <span class="demo-step-number">03</span>
+              <span class="demo-step-title">创建项目群</span>
+            </button>
+            <button class="demo-step" id="demoStep4" type="button" role="tab" aria-selected="false" aria-controls="demoScene" data-demo-step="3">
+              <span class="demo-step-number">04</span>
+              <span class="demo-step-title">在群里输入话题</span>
+            </button>
+            <button class="demo-step" id="demoStep5" type="button" role="tab" aria-selected="false" aria-controls="demoScene" data-demo-step="4">
+              <span class="demo-step-number">05</span>
+              <span class="demo-step-title">启动 Codex 会话</span>
+            </button>
+          </div>
+
+          <div class="demo-player" aria-label="演示播放控制">
+            <button class="demo-icon-button" type="button" data-demo-prev aria-label="上一步">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m15.4 5.4-1.4-1.4-8 8 8 8 1.4-1.4L8.8 12z"/></svg>
+            </button>
+            <span class="demo-counter" data-demo-counter>1 / 5</span>
+            <button class="demo-icon-button" type="button" data-demo-next aria-label="下一步">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m8.6 18.6 1.4 1.4 8-8-8-8-1.4 1.4 6.6 6.6z"/></svg>
+            </button>
+            <button class="demo-icon-button" type="button" data-demo-toggle aria-label="暂停自动播放" title="暂停自动播放">
+              <span aria-hidden="true" data-demo-toggle-icon>Ⅱ</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="demo-canvas">
+          <div class="feishu-window" aria-label="模拟飞书对话窗口">
+            <div class="feishu-topbar">
+              <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <strong>飞书 · Feishu Codex Bridge</strong>
+              <span class="demo-online">本机 Bridge 在线</span>
+            </div>
+            <div class="feishu-scene" id="demoScene" role="tabpanel" aria-labelledby="demoStep1"></div>
+          </div>
+          <div class="demo-caption" aria-hidden="true">
+            <span><strong data-demo-caption-title>入口只有一个：</strong> <span data-demo-caption-copy>私聊主 Agent，不需要记命令。</span></span>
+            <span>项目群 = 工作区&nbsp;&nbsp;·&nbsp;&nbsp;话题 = Codex Session</span>
+          </div>
+          <p class="sr-only" aria-live="polite" data-demo-live>步骤 1：私聊主 Agent，发送“项目”。</p>
+        </div>
       </div>
+
+      <template data-demo-template="0">
+        <aside class="feishu-sidebar">
+          <div class="sidebar-user"><span class="user-avatar">L</span><span>冷帅的飞书</span></div>
+          <div class="sidebar-label">置顶</div>
+          <div class="chat-row active"><span class="chat-avatar">A</span><span>主 Agent</span></div>
+          <div class="sidebar-label">最近会话</div>
+          <div class="chat-row"><span class="chat-avatar project">搭</span><span>Codex · 搭配小程序</span></div>
+        </aside>
+        <div class="feishu-main">
+          <header class="conversation-head">
+            <div class="conversation-title"><strong>主 Agent</strong><span>项目入口与会话管理</span></div>
+            <span class="head-action">机器人</span>
+          </header>
+          <div class="conversation">
+            <div class="message-list">
+              <div class="message-row user">
+                <div class="message-bubble">项目</div>
+                <span class="message-avatar">我</span>
+              </div>
+              <div class="message-row">
+                <span class="message-avatar agent">A</span>
+                <div class="message-bubble"><div class="message-name">主 Agent</div>正在读取这台电脑上最近使用的 Codex 项目…</div>
+              </div>
+            </div>
+            <div class="composer-static">发送消息给主 Agent</div>
+          </div>
+        </div>
+      </template>
+
+      <template data-demo-template="1">
+        <aside class="feishu-sidebar">
+          <div class="sidebar-user"><span class="user-avatar">L</span><span>冷帅的飞书</span></div>
+          <div class="sidebar-label">置顶</div>
+          <div class="chat-row active"><span class="chat-avatar">A</span><span>主 Agent</span></div>
+          <div class="sidebar-label">最近会话</div>
+          <div class="chat-row"><span class="chat-avatar project">搭</span><span>Codex · 搭配小程序</span></div>
+        </aside>
+        <div class="feishu-main">
+          <header class="conversation-head">
+            <div class="conversation-title"><strong>主 Agent</strong><span>项目入口与会话管理</span></div>
+            <span class="head-action">机器人</span>
+          </header>
+          <div class="conversation">
+            <div class="message-list">
+              <div class="message-row user">
+                <div class="message-bubble">项目</div>
+                <span class="message-avatar">我</span>
+              </div>
+              <div class="message-row">
+                <span class="message-avatar agent">A</span>
+                <div class="project-picker">
+                  <h3>选择一个本机项目</h3>
+                  <p>最近使用的 3 个工作区，点击即可进入。</p>
+                  <div class="project-choices">
+                    <div class="project-choice selected">
+                      <span class="project-icon">OC</span>
+                      <span><b>OpenCraft</b><small>~/Desktop/codepro/opencraft</small></span>
+                      <span class="choice-arrow">›</span>
+                      <svg class="demo-pointer" viewBox="0 0 28 34" aria-hidden="true"><path fill="oklch(99% 0.006 240)" stroke="oklch(27% 0.04 245)" stroke-width="1.6" d="M3 2v25.4l6.2-5.7 4.8 10.2 4.5-2.2-4.8-9.8h8.7z"/></svg>
+                    </div>
+                    <div class="project-choice">
+                      <span class="project-icon">搭</span>
+                      <span><b>搭配小程序</b><small>~/Documents/搭配小程序</small></span>
+                      <span class="choice-arrow">›</span>
+                    </div>
+                    <div class="project-choice">
+                      <span class="project-icon">TX</span>
+                      <span><b>taoxiao-callback</b><small>~/Desktop/codepro/淘校/对接</small></span>
+                      <span class="choice-arrow">›</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="composer-static">也可以发送项目名称搜索</div>
+          </div>
+        </div>
+      </template>
+
+      <template data-demo-template="2">
+        <aside class="feishu-sidebar">
+          <div class="sidebar-user"><span class="user-avatar">L</span><span>冷帅的飞书</span></div>
+          <div class="sidebar-label">置顶</div>
+          <div class="chat-row"><span class="chat-avatar">A</span><span>主 Agent</span></div>
+          <div class="sidebar-label">项目群</div>
+          <div class="chat-row active new"><span class="chat-avatar project">OC</span><span>Codex · OpenCraft</span></div>
+          <div class="chat-row"><span class="chat-avatar project">搭</span><span>Codex · 搭配小程序</span></div>
+        </aside>
+        <div class="feishu-main">
+          <header class="conversation-head">
+            <div class="conversation-title"><strong>主 Agent</strong><span>项目入口与会话管理</span></div>
+            <span class="head-action">机器人</span>
+          </header>
+          <div class="conversation">
+            <div class="message-list">
+              <div class="message-row user">
+                <div class="message-bubble">OpenCraft</div>
+                <span class="message-avatar">我</span>
+              </div>
+              <div class="message-row">
+                <span class="message-avatar agent">A</span>
+                <div class="creation-card">
+                  <div class="success-mark">✓</div>
+                  <h3>项目群已创建</h3>
+                  <p>“Codex · OpenCraft”已经绑定本机工作区。以后这个项目的任务都从群里的话题开始。</p>
+                  <span class="open-group">进入项目群 <span aria-hidden="true">→</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="composer-static">项目目录与群的绑定会保存在本机</div>
+          </div>
+        </div>
+      </template>
+
+      <template data-demo-template="3">
+        <aside class="feishu-sidebar">
+          <div class="sidebar-user"><span class="user-avatar">L</span><span>冷帅的飞书</span></div>
+          <div class="sidebar-label">置顶</div>
+          <div class="chat-row"><span class="chat-avatar">A</span><span>主 Agent</span></div>
+          <div class="sidebar-label">项目群</div>
+          <div class="chat-row active"><span class="chat-avatar project">OC</span><span>Codex · OpenCraft</span></div>
+          <div class="chat-row"><span class="chat-avatar project">搭</span><span>Codex · 搭配小程序</span></div>
+        </aside>
+        <div class="feishu-main">
+          <header class="conversation-head">
+            <div class="conversation-title"><strong>Codex · OpenCraft</strong><span>话题模式 · 本机工作区已绑定</span></div>
+            <span class="head-action">新建话题</span>
+          </header>
+          <div class="conversation">
+            <div class="message-list">
+              <div class="topic-empty">
+                <div>
+                  <div class="topic-empty-mark">#</div>
+                  <h3>一个话题，一条独立工作线</h3>
+                  <p>直接写任务，不需要 @机器人。首条消息会成为话题标题，并创建新的 Codex Session。</p>
+                </div>
+              </div>
+            </div>
+            <div class="composer">
+              <div class="composer-label"><span>创建新话题</span><span>OpenCraft</span></div>
+              <div class="typed-line">更新产品介绍页，用动画演示完整使用流程</div>
+              <div class="composer-actions"><span>Enter 发送 · Shift + Enter 换行</span><span class="send-topic">↑</span></div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template data-demo-template="4">
+        <aside class="feishu-sidebar">
+          <div class="sidebar-user"><span class="user-avatar">L</span><span>冷帅的飞书</span></div>
+          <div class="sidebar-label">置顶</div>
+          <div class="chat-row"><span class="chat-avatar">A</span><span>主 Agent</span></div>
+          <div class="sidebar-label">项目群</div>
+          <div class="chat-row active"><span class="chat-avatar project">OC</span><span>Codex · OpenCraft</span></div>
+          <div class="chat-row"><span class="chat-avatar project">搭</span><span>Codex · 搭配小程序</span></div>
+        </aside>
+        <div class="feishu-main">
+          <header class="conversation-head">
+            <div class="conversation-title"><strong>更新产品介绍页</strong><span>Codex · OpenCraft · 独立话题</span></div>
+            <span class="head-action">会话进行中</span>
+          </header>
+          <div class="conversation">
+            <div class="message-list">
+              <div class="message-row user">
+                <div class="message-bubble">更新产品介绍页，用动画演示完整使用流程</div>
+                <span class="message-avatar">我</span>
+              </div>
+              <div class="message-row">
+                <span class="message-avatar agent">C</span>
+                <div class="session-card">
+                  <div class="session-head">
+                    <div class="session-head-row"><h3>Codex 正在实现</h3><span class="session-badge">Session 已绑定</span></div>
+                    <p>话题后续消息都会继续当前上下文。</p>
+                  </div>
+                  <div class="session-body">
+                    <div class="session-event"><span>分析介绍页结构</span><span>完成</span></div>
+                    <div class="session-progress" aria-hidden="true"></div>
+                    <div class="session-event" style="margin-top: 10px;"><span>实现飞书对话动画</span><span>进行中</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="composer-static">继续补充要求，处理审批，或追问进度</div>
+          </div>
+        </div>
+      </template>
     </section>
 
     <section class="section" id="install">
@@ -602,6 +1237,116 @@ https://github.com/lengjingxu/feishu-codex-bridge
   </footer>
 
   <script>
+    const productDemo = document.querySelector("[data-product-demo]");
+
+    if (productDemo) {
+      const scene = productDemo.querySelector("#demoScene");
+      const steps = Array.from(productDemo.querySelectorAll("[data-demo-step]"));
+      const stepList = productDemo.querySelector(".demo-step-list");
+      const templates = Array.from(document.querySelectorAll("[data-demo-template]"));
+      const counter = productDemo.querySelector("[data-demo-counter]");
+      const live = productDemo.querySelector("[data-demo-live]");
+      const captionTitle = productDemo.querySelector("[data-demo-caption-title]");
+      const captionCopy = productDemo.querySelector("[data-demo-caption-copy]");
+      const toggle = productDemo.querySelector("[data-demo-toggle]");
+      const toggleIcon = productDemo.querySelector("[data-demo-toggle-icon]");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const duration = 4200;
+      const captions = [
+        ["入口只有一个：", "私聊主 Agent，不需要记命令。"],
+        ["项目来自本机：", "清单读取允许访问的 Codex 工作区。"],
+        ["点击即建群：", "群与本地目录自动完成一对一绑定。"],
+        ["任务就是话题：", "首条消息同时成为话题标题和任务要求。"],
+        ["上下文持续存在：", "继续追问、审批和进度都留在同一话题。"],
+      ];
+      const announcements = [
+        "步骤 1：私聊主 Agent，发送“项目”。",
+        "步骤 2：主 Agent 返回本机项目清单，选择 OpenCraft。",
+        "步骤 3：Bridge 创建并绑定 Codex OpenCraft 项目群。",
+        "步骤 4：进入项目群，直接输入一个新话题。",
+        "步骤 5：话题创建独立 Codex Session，并持续返回执行进度。",
+      ];
+      let activeStep = 0;
+      let timer = 0;
+      let inView = false;
+      let autoEnabled = !reduceMotion;
+
+      const isActuallyPlaying = () => autoEnabled && inView && !document.hidden;
+
+      const updatePlayer = () => {
+        const playing = isActuallyPlaying();
+        productDemo.dataset.playing = String(playing);
+        toggle.setAttribute("aria-label", autoEnabled ? "暂停自动播放" : "继续自动播放");
+        toggle.setAttribute("title", autoEnabled ? "暂停自动播放" : "继续自动播放");
+        toggleIcon.textContent = autoEnabled ? "Ⅱ" : "▶";
+        window.clearTimeout(timer);
+        if (playing) {
+          timer = window.setTimeout(() => {
+            renderStep((activeStep + 1) % steps.length);
+          }, duration);
+        }
+      };
+
+      const renderStep = (index) => {
+        activeStep = (index + steps.length) % steps.length;
+        const template = templates.find((item) => Number(item.dataset.demoTemplate) === activeStep);
+        if (template && scene) scene.replaceChildren(template.content.cloneNode(true));
+
+        steps.forEach((step, stepIndex) => {
+          const selected = stepIndex === activeStep;
+          step.classList.toggle("is-active", selected);
+          step.setAttribute("aria-selected", String(selected));
+          step.tabIndex = selected ? 0 : -1;
+        });
+
+        scene.setAttribute("aria-labelledby", steps[activeStep].id);
+        counter.textContent = `${activeStep + 1} / ${steps.length}`;
+        live.textContent = announcements[activeStep];
+        captionTitle.textContent = captions[activeStep][0];
+        captionCopy.textContent = captions[activeStep][1];
+        if (stepList.scrollWidth > stepList.clientWidth) {
+          const activeTab = steps[activeStep];
+          stepList.scrollTo({
+            left: activeTab.offsetLeft - ((stepList.clientWidth - activeTab.offsetWidth) / 2),
+            behavior: reduceMotion ? "auto" : "smooth",
+          });
+        }
+        updatePlayer();
+      };
+
+      steps.forEach((step, index) => {
+        step.addEventListener("click", () => renderStep(index));
+        step.addEventListener("keydown", (event) => {
+          if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+          event.preventDefault();
+          const direction = event.key === "ArrowRight" ? 1 : -1;
+          const target = (activeStep + direction + steps.length) % steps.length;
+          renderStep(target);
+          steps[target].focus();
+        });
+      });
+
+      productDemo.querySelector("[data-demo-prev]").addEventListener("click", () => renderStep(activeStep - 1));
+      productDemo.querySelector("[data-demo-next]").addEventListener("click", () => renderStep(activeStep + 1));
+      toggle.addEventListener("click", () => {
+        autoEnabled = !autoEnabled;
+        updatePlayer();
+      });
+      document.addEventListener("visibilitychange", updatePlayer);
+
+      if ("IntersectionObserver" in window) {
+        const observer = new IntersectionObserver((entries) => {
+          inView = entries[0].isIntersecting;
+          updatePlayer();
+        }, { threshold: 0.38 });
+        observer.observe(productDemo);
+      } else {
+        inView = true;
+      }
+
+      renderStep(0);
+    }
+
     const fallbackCopy = (text) => {
       const area = document.createElement("textarea");
       area.value = text;
