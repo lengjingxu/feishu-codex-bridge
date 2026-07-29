@@ -485,6 +485,32 @@
     .chat-avatar { width: 30px; height: 30px; border-radius: 9px; background: oklch(58% 0.18 255); font-size: 12px; }
     .chat-avatar.project { background: oklch(38% 0.09 155); }
     .chat-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topic-thread {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 7px;
+      align-items: center;
+      margin: 4px 0 4px 16px;
+      padding: 8px;
+      border-radius: 8px;
+      color: oklch(28% 0.045 245);
+      background: oklch(88% 0.065 255);
+      font-size: 10px;
+      font-weight: 780;
+      animation: group-arrives .58s var(--ease-out) both;
+    }
+    .topic-thread::before {
+      content: "#";
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      color: oklch(99% 0.006 240);
+      background: oklch(58% 0.18 255);
+      font-size: 12px;
+    }
+    .topic-thread span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .feishu-main { min-width: 0; display: grid; grid-template-rows: 58px minmax(0, 1fr); background: oklch(99% 0.006 240); }
     .conversation-head {
       display: flex;
@@ -527,6 +553,19 @@
     }
     .message-row.user .message-bubble { border-radius: 13px 4px 13px 13px; background: oklch(88% 0.06 255); font-weight: 700; }
     .message-name { margin-bottom: 4px; color: oklch(53% 0.04 245); font-size: 10px; font-weight: 760; }
+    .topic-created-notice {
+      align-self: center;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      color: oklch(48% 0.03 245);
+      background: oklch(94% 0.02 245);
+      font-size: 10px;
+      animation: bubble-in .45s var(--ease-out) both;
+    }
+    .topic-created-notice strong { color: oklch(50% 0.14 255); }
     .project-picker {
       width: min(100%, 480px);
       padding: 16px;
@@ -804,6 +843,8 @@
       .sidebar-user { padding: 0 7px 12px; }
       .sidebar-user > span:last-child, .sidebar-label, .chat-row > span:last-child { display: none; }
       .chat-row { grid-template-columns: 30px; padding: 7px; }
+      .topic-thread { grid-template-columns: 22px; justify-content: center; margin-left: 0; padding: 7px; }
+      .topic-thread span { display: none; }
       .conversation-head { padding: 0 14px; }
       .head-action { display: none; }
       .message-list { padding: 17px 14px; }
@@ -897,7 +938,7 @@
     <section class="section" id="use">
       <div class="section-heading">
         <h2>五步，从项目到会话</h2>
-        <p>这不是概念图。下面按真实飞书操作还原一次完整使用过程：主 Agent 负责找到项目和创建群，项目群里的每个话题负责启动并承载一个独立 Codex Session。</p>
+        <p>这不是概念图。下面按真实飞书操作还原一次完整使用过程：主 Agent 负责找到项目和创建群；项目群中的任务会自动变成新的话题对话，Codex 只在话题里创建 Session 并回复。</p>
       </div>
 
       <div class="product-demo" data-product-demo data-playing="false">
@@ -921,7 +962,7 @@
             </button>
             <button class="demo-step" id="demoStep5" type="button" role="tab" aria-selected="false" aria-controls="demoScene" data-demo-step="4">
               <span class="demo-step-number">05</span>
-              <span class="demo-step-title">启动 Codex 会话</span>
+              <span class="demo-step-title">自动新增话题对话</span>
             </button>
           </div>
 
@@ -1090,7 +1131,7 @@
                 <div>
                   <div class="topic-empty-mark">#</div>
                   <h3>一个话题，一条独立工作线</h3>
-                  <p>直接写任务，不需要 @机器人。首条消息会成为话题标题，并创建新的 Codex Session。</p>
+                  <p>直接写任务，不需要 @机器人。发送后 Bridge 会自动新增话题对话并创建 Codex Session；Codex 不在项目群主对话中回复。</p>
                 </div>
               </div>
             </div>
@@ -1109,16 +1150,18 @@
           <div class="sidebar-label">置顶</div>
           <div class="chat-row"><span class="chat-avatar">A</span><span>主 Agent</span></div>
           <div class="sidebar-label">项目群</div>
-          <div class="chat-row active"><span class="chat-avatar project">OC</span><span>Codex · OpenCraft</span></div>
+          <div class="chat-row"><span class="chat-avatar project">OC</span><span>Codex · OpenCraft</span></div>
+          <div class="topic-thread"><span>更新产品介绍页</span></div>
           <div class="chat-row"><span class="chat-avatar project">搭</span><span>Codex · 搭配小程序</span></div>
         </aside>
         <div class="feishu-main">
           <header class="conversation-head">
-            <div class="conversation-title"><strong>更新产品介绍页</strong><span>Codex · OpenCraft · 独立话题</span></div>
+            <div class="conversation-title"><strong>更新产品介绍页</strong><span>自动新增的话题对话 · 独立 Codex Session</span></div>
             <span class="head-action">会话进行中</span>
           </header>
           <div class="conversation">
             <div class="message-list">
+              <div class="topic-created-notice"><strong>自动创建</strong><span>项目群中的任务已进入新话题对话</span></div>
               <div class="message-row user">
                 <div class="message-bubble">更新产品介绍页，用动画演示完整使用流程</div>
                 <span class="message-avatar">我</span>
@@ -1128,7 +1171,7 @@
                 <div class="session-card">
                   <div class="session-head">
                     <div class="session-head-row"><h3>Codex 正在实现</h3><span class="session-badge">Session 已绑定</span></div>
-                    <p>话题后续消息都会继续当前上下文。</p>
+                    <p>Codex 只在当前话题对话中回复；后续消息继续同一个上下文。</p>
                   </div>
                   <div class="session-body">
                     <div class="session-event"><span>分析介绍页结构</span><span>完成</span></div>
@@ -1257,14 +1300,14 @@ https://github.com/lengjingxu/feishu-codex-bridge
         ["项目来自本机：", "清单读取允许访问的 Codex 工作区。"],
         ["点击即建群：", "群与本地目录自动完成一对一绑定。"],
         ["任务就是话题：", "首条消息同时成为话题标题和任务要求。"],
-        ["上下文持续存在：", "继续追问、审批和进度都留在同一话题。"],
+        ["回复只在话题里：", "Bridge 自动新增话题对话，Codex 不在项目群主对话回复。"],
       ];
       const announcements = [
         "步骤 1：私聊主 Agent，发送“项目”。",
         "步骤 2：主 Agent 返回本机项目清单，选择 OpenCraft。",
         "步骤 3：Bridge 创建并绑定 Codex OpenCraft 项目群。",
         "步骤 4：进入项目群，直接输入一个新话题。",
-        "步骤 5：话题创建独立 Codex Session，并持续返回执行进度。",
+        "步骤 5：Bridge 自动新增话题对话，Codex 创建 Session 并只在该话题中回复。",
       ];
       let activeStep = 0;
       let timer = 0;
