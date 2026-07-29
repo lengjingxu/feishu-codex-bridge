@@ -32,7 +32,6 @@ export class ProcessPool {
     }
     log.info('pool', 'wait', { active: this.active, cap: this.cap(), waiting: this.waiters.length + 1 });
     await new Promise<void>((resolve) => this.waiters.push(resolve));
-    this.active++;
     log.info('pool', 'acquired', { active: this.active, cap: this.cap() });
     return () => this.release();
   }
@@ -40,11 +39,14 @@ export class ProcessPool {
   private release(): void {
     this.active = Math.max(0, this.active - 1);
     log.info('pool', 'released', { active: this.active });
-    // Wake the next waiter if there's headroom. If cap was just lowered
-    // via /config, this naturally throttles by not waking.
-    if (this.active < this.cap() && this.waiters.length > 0) {
+    // Fill all newly available capacity. This matters when maxConcurrentRuns
+    // is raised while several runs are waiting; waking only one would leave
+    // the pool under-utilized until another run finishes.
+    while (this.active < this.cap() && this.waiters.length > 0) {
       const next = this.waiters.shift();
-      if (next) next();
+      if (!next) break;
+      this.active++;
+      next();
     }
   }
 

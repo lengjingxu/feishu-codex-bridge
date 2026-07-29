@@ -154,8 +154,9 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log(`\n收到 ${sig}，正在关闭...`);
     try {
       await bridge.disconnect();
+      await agent.close?.();
     } catch (err) {
-      console.error('[disconnect-failed]', err);
+      console.error('[shutdown-failed]', err);
     }
     // unregister is best-effort sync — we're about to exit anyway.
     unregisterSync(entry.id);

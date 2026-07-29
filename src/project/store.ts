@@ -1,7 +1,7 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { paths } from '../config/paths';
 import { log } from '../core/logger';
+import { writeAtomicFile } from '../config/atomic-file';
 import type { Project, ProjectBindingStore, TopicBinding } from './types';
 
 interface ProjectBindingData {
@@ -116,10 +116,7 @@ export class JsonProjectBindingStore implements ProjectBindingStore {
 
   private schedulePersist(): void {
     this.saving = this.saving.then(async () => {
-      await mkdir(dirname(this.path), { recursive: true });
-      const temp = `${this.path}.tmp`;
-      await writeFile(temp, `${JSON.stringify(this.data, null, 2)}\n`, 'utf8');
-      await rename(temp, this.path);
+      await writeAtomicFile(this.path, `${JSON.stringify(this.data, null, 2)}\n`);
     }).catch((err) => log.fail('project', err, { step: 'persist' }));
   }
 }

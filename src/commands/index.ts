@@ -28,8 +28,10 @@ import {
 import type { AppConfig, MessageReplyMode, TenantBrand } from '../config/schema';
 import {
   getAgentStopGraceMs,
+  getEnforceProjectRootSandbox,
   getMaxConcurrentRuns,
   getMessageReplyMode,
+  getProjectRoots,
   getRequireMentionInGroup,
   getRunIdleTimeoutMs,
   getShowToolCalls,
@@ -57,6 +59,7 @@ import type { ProjectCatalog } from '../project/catalog';
 import type { Project, ProjectBindingStore } from '../project/types';
 import type { SessionSyncManager } from '../session/sync';
 import { showProjectWorkbench } from '../project/workbench';
+import { isWithinProjectRoots } from '../config/path-policy';
 
 export interface Controls {
   /** Restart the bridge in-process: disconnect WS, kill OMP runs, reload
@@ -668,6 +671,13 @@ async function handleCd(args: string, ctx: CommandContext): Promise<void> {
   } catch {
     await reply(ctx, `路径不存在：\`${absolute}\``);
     return;
+  }
+  if (getEnforceProjectRootSandbox(ctx.controls.cfg)) {
+    const roots = getProjectRoots(ctx.controls.cfg);
+    if (roots.length === 0 || !(await isWithinProjectRoots(absolute, roots))) {
+      await reply(ctx, '安全策略不允许切换到项目根目录之外的路径，请先配置 `preferences.projectRoots`。');
+      return;
+    }
   }
   ctx.activeRuns.interrupt(ctx.scope);
   ctx.workspaces.setCwd(ctx.scope, absolute);

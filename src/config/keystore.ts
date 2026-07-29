@@ -1,8 +1,8 @@
 import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
-import { dirname } from 'node:path';
 import { paths } from './paths';
+import { writeAtomicFile } from './atomic-file';
 
 /**
  * Local AES-256-GCM keystore for App Secrets and similar.
@@ -55,11 +55,7 @@ async function readStore(): Promise<StoreFile> {
 }
 
 async function writeStore(store: StoreFile): Promise<void> {
-  await mkdir(dirname(paths.secretsFile), { recursive: true });
-  const tmp = `${paths.secretsFile}.tmp-${process.pid}`;
-  await writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
-  await chmod(tmp, 0o600);
-  await rename(tmp, paths.secretsFile);
+  await writeAtomicFile(paths.secretsFile, `${JSON.stringify(store, null, 2)}\n`, 0o600);
 }
 
 /**
@@ -75,11 +71,7 @@ async function loadOrCreateSalt(): Promise<Buffer> {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
   const salt = randomBytes(KEY_LEN);
-  await mkdir(dirname(paths.keystoreSaltFile), { recursive: true });
-  const tmp = `${paths.keystoreSaltFile}.tmp-${process.pid}`;
-  await writeFile(tmp, salt);
-  await chmod(tmp, 0o600);
-  await rename(tmp, paths.keystoreSaltFile);
+  await writeAtomicFile(paths.keystoreSaltFile, salt, 0o600);
   return salt;
 }
 
