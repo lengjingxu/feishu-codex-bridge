@@ -538,7 +538,11 @@ async function handlePreset(args: string, ctx: CommandContext): Promise<void> {
     return;
   }
   const synthetic: NormalizedMessage = {
-    messageId: `preset_${Date.now().toString(36)}`,
+    // The queued message is internal, but its id is later used as the
+    // reply target when the agent run publishes progress and the result.
+    // Keep the real Feishu message id from the card action; a generated id
+    // is not a valid open_message_id for the Feishu API.
+    messageId: ctx.msg.messageId,
     chatId: ctx.msg.chatId,
     chatType: ctx.msg.chatType,
     threadId: ctx.msg.threadId,

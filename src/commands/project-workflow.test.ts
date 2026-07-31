@@ -168,6 +168,27 @@ describe('Codex project command workflow', () => {
     expect(updateCard).toHaveBeenLastCalledWith('message-1', expect.any(Object));
   });
 
+  it('keeps the real Feishu message id when queuing a task preset', async () => {
+    const send = vi.fn().mockResolvedValue({ messageId: 'message-2' });
+    const bindings = new JsonProjectBindingStore(join(await mkdtemp(join(tmpdir(), 'feishu-command-test-')), 'bindings.json'));
+    const push = vi.fn();
+    const ctx = context({ send }, bindings);
+    ctx.msg.threadId = 'topic-1';
+    ctx.scope = 'chat-dm:topic-1';
+    ctx.pending = { push } as never;
+
+    await runCommandHandler('preset', 'use review', ctx);
+
+    expect(push).toHaveBeenCalledWith('chat-dm:topic-1', expect.objectContaining({
+      messageId: 'message-1',
+      threadId: 'topic-1',
+      content: '请审查当前未提交改动，按严重性列出问题，并给出文件与行号。不要直接修改文件。',
+    }));
+    expect(send).toHaveBeenCalledWith('chat-dm', {
+      markdown: '已下发“审查当前改动”，稍后会在当前话题执行。',
+    }, { replyTo: 'message-1' });
+  });
+
   it('starts review and compaction for the current topic, then forks it into a new topic', async () => {
     const send = vi.fn()
       .mockResolvedValueOnce({ messageId: 'root-fork' });
