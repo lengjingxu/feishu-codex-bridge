@@ -41,6 +41,7 @@ import { SessionStore } from '../../session/store';
 import { WorkspaceStore } from '../../workspace/store';
 import { LocalProjectCatalog } from '../../project/catalog';
 import { JsonProjectBindingStore } from '../../project/store';
+import { JsonTaskStore } from '../../task/store';
 
 // Prefer IPv4 — Node 20+ defaults to "verbatim" which respects whatever
 // the resolver returns first; in IPv6-broken networks (WSL2, certain VPNs,
@@ -114,6 +115,9 @@ export async function runStart(opts: StartOptions): Promise<void> {
   const projectBindings = new JsonProjectBindingStore();
   await projectBindings.load();
   projectBindings.registerProjects?.(await projectCatalog.list());
+  const taskStore = new JsonTaskStore();
+  await taskStore.load();
+  taskStore.markInFlightStale();
 
   await gcMediaCache(MEDIA_GC_MAX_AGE_MS);
   await gcOldLogs();
@@ -194,6 +198,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
           controls,
           projectCatalog,
           projectBindings,
+          taskStore,
         });
         console.log('[restart] disconnecting old bridge...');
         try {
@@ -220,7 +225,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     },
   };
 
-  bridge = await startChannel({ cfg, agent, sessions, workspaces, controls, projectCatalog, projectBindings });
+  bridge = await startChannel({ cfg, agent, sessions, workspaces, controls, projectCatalog, projectBindings, taskStore });
 
   // Backfill the bot's display name into the registry once WS handshake is
   // done — future starts conflicting on this app can show it in the prompt

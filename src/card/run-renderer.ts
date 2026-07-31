@@ -16,6 +16,7 @@ type Group = ToolGroup | TextGroup;
 
 export interface RunCardOptions {
   sessionActions?: boolean;
+  taskId?: string;
 }
 
 export function renderCard(state: RunState, options: RunCardOptions = {}): object {
@@ -55,7 +56,7 @@ export function renderCard(state: RunState, options: RunCardOptions = {}): objec
     if (state.footer) elements.push(footerStatus(state.footer));
     elements.push(stopButton());
   } else if (state.terminal === 'done') {
-    elements.push(completionEvidence(state));
+    elements.push(completionEvidence(state, options.taskId));
     if (state.sessionId && options.sessionActions) elements.push(completionActions(state));
   } else if (state.sessionId && options.sessionActions) {
     // A terminal card is often the only card a user keeps open in a topic.
@@ -199,7 +200,7 @@ function stopButton(): object {
   };
 }
 
-function completionEvidence(state: RunState): object {
+function completionEvidence(state: RunState, taskId?: string): object {
   const tools = state.blocks.filter((block): block is Extract<Block, { kind: 'tool' }> => block.kind === 'tool');
   const passed = tools.filter((block) => block.tool.status === 'done').length;
   const failed = tools.filter((block) => block.tool.status === 'error').length;
@@ -208,6 +209,7 @@ function completionEvidence(state: RunState): object {
   const failedTests = tests.filter((block) => block.tool.status === 'error').length;
   const lines = [
     '**验收证据**',
+    taskId ? `- 任务：${shortTaskId(taskId)}` : undefined,
     state.ui.statuses['代码改动'] ? `- 代码改动：${state.ui.statuses['代码改动']}` : '- 代码改动：未报告',
     `- 工具执行：${passed} 成功${failed ? `，${failed} 失败` : ''}`,
     tests.length
@@ -221,6 +223,11 @@ function completionEvidence(state: RunState): object {
     border: failed ? 'red' : 'blue',
     body: lines.join('\n'),
   });
+}
+
+function shortTaskId(taskId: string): string {
+  const normalized = taskId.replace(/^task_/, '').slice(0, 8).toUpperCase();
+  return `#${normalized}`;
 }
 
 function completionActions(state: RunState): object {

@@ -38,12 +38,15 @@ import {
   getRunIdleTimeoutMs,
   getShowToolCalls,
   isChatAllowed,
+  isProjectAllowed,
   isUserAllowed,
 } from '../config/schema';
 import { resolveAppSecret } from '../config/secret-resolver';
 import { log, withTrace } from '../core/logger';
 import { MediaCache, type LocalAttachment } from '../media/cache';
 import type { SessionStore } from '../session/store';
+import { JsonTaskStore } from '../task/store';
+import type { TaskRecord, TaskStatus } from '../task/types';
 import type { WorkspaceStore } from '../workspace/store';
 import type { ProjectCatalog } from '../project/catalog';
 import type { Project, ProjectBindingStore } from '../project/types';
@@ -139,10 +142,12 @@ export interface StartChannelDeps {
   controls: Controls;
   projectCatalog?: ProjectCatalog;
   projectBindings?: ProjectBindingStore;
+  taskStore?: JsonTaskStore;
 }
 
 export async function startChannel(deps: StartChannelDeps): Promise<BridgeChannel> {
   const { cfg, agent, sessions, workspaces, controls, projectCatalog, projectBindings } = deps;
+  const taskStore = deps.taskStore ?? new JsonTaskStore();
   const activeRuns = new ActiveRuns();
   const sessionSync = new SessionSyncManager();
   // ChatModeCache stays per-bridge-instance — invalidated on restart along
@@ -232,6 +237,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           mode,
           projectCatalog,
           projectBindings,
+          taskStore,
         });
       } catch (err) {
         log.fail('flush', err);
@@ -263,6 +269,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           projectCatalog,
           projectBindings,
           sessionSync,
+          taskStore,
         }),
       ).catch((err) => log.fail('intake', err));
     },
@@ -284,6 +291,7 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
           projectCatalog,
           projectBindings,
           sessionSync,
+          taskStore,
         });
       }).catch((err) => log.fail('cardAction', err));
     },
@@ -374,8 +382,9 @@ export async function startChannel(deps: StartChannelDeps): Promise<BridgeChanne
       sessionSync.stopAll();
       pending.cancelAll();
       await channel.disconnect();
+      taskStore.markInFlightStale();
       await activeRuns.stopAll();
-      await Promise.allSettled([sessions.flush(), workspaces.flush(), projectBindings?.flush()]);
+      await Promise.allSettled([sessions.flush(), workspaces.flush(), projectBindings?.flush(), taskStore.flush()]);
     },
   };
 }
@@ -391,9 +400,10 @@ interface IntakeDeps {
   msg: NormalizedMessage;
   controls: Controls;
   chatModeCache: ChatModeCache;
-    projectCatalog?: ProjectCatalog;
+  projectCatalog?: ProjectCatalog;
   projectBindings?: ProjectBindingStore;
   sessionSync?: SessionSyncManager;
+  taskStore: JsonTaskStore;
 }
 
 async function intakeMessage(deps: IntakeDeps): Promise<void> {
@@ -411,6 +421,7 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     projectCatalog,
     projectBindings,
     sessionSync,
+    taskStore,
   } = deps;
   const preview = msg.content.length > 80 ? `${msg.content.slice(0, 80)}…` : msg.content;
   // Resolve scope (and underlying chat mode) once at intake — every
@@ -455,6 +466,14 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     });
     return;
   }
+  if (project && !isProjectAllowed(controls.cfg, project.projectKey, msg.senderId)) {
+    log.info('intake', 'skip-not-allowed-project', {
+      scope,
+      project: project.projectKey,
+      sender: msg.senderId.slice(-6),
+    });
+    return;
+  }
 
   // Group-mention policy. p2p is always unrestricted; in groups (regular and
   // topic) we drop messages that don't @bot when the user has opted into the
@@ -484,6 +503,8 @@ async function intakeMessage(deps: IntakeDeps): Promise<void> {
     controls,
     projectCatalog,
     projectBindings,
+    taskStore,
+    pending,
     sessionSync,
   });
   if (handled) {
@@ -601,6 +622,7 @@ interface RunBatchDeps {
   mode: ChatMode;
   projectCatalog?: ProjectCatalog;
   projectBindings?: ProjectBindingStore;
+  taskStore: JsonTaskStore;
 }
 
 interface AgentStreamHooks {
@@ -623,6 +645,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     mode,
     projectCatalog,
     projectBindings,
+    taskStore,
   } = deps;
   if (batch.length === 0) return;
   const firstMsg = batch[0];
@@ -705,6 +728,23 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     }
   }
 
+  const task = taskStore.create({
+    scope,
+    chatId,
+    ...(threadId ? { topicId: threadId } : {}),
+    ...(project?.projectKey ? { projectKey: project.projectKey } : {}),
+    ...(project?.name ? { projectName: project.name } : {}),
+    cwd,
+    sourceMessageId: lastMsg.messageId,
+    title,
+    createdBy: firstMsg.senderId,
+  });
+  taskStore.update(task.taskId, {
+    ...(resumeFrom ? { codexThreadId: resumeFrom } : {}),
+    stage: '准备执行',
+  });
+  log.info('task', 'created', { taskId: task.taskId, scope, cwd, title });
+
   const feishuHost = createFeishuHostIntegration(channel, {
     scope,
     chatId,
@@ -713,21 +753,29 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
     cwd,
   });
 
-  const run = agent.run({
-    prompt,
-    clientUserMessageId: lastMsg.messageId,
-    title,
-    sessionId: resumeFrom,
-    cwd,
-    model: getOmpModel(controls.cfg),
-    imagePaths,
-    stopGraceMs: getAgentStopGraceMs(controls.cfg),
-    hostTools: feishuHost.tools,
-    hostUriSchemes: feishuHost.uriSchemes,
-    ...(getAgentBackend(controls.cfg) === 'codex'
-      ? { additionalContext: buildFeishuTurnContext(batch, project) }
-      : {}),
-  });
+  let run: ReturnType<AgentAdapter['run']>;
+  try {
+    run = agent.run({
+      prompt,
+      clientUserMessageId: lastMsg.messageId,
+      title,
+      sessionId: resumeFrom,
+      cwd,
+      model: getOmpModel(controls.cfg),
+      imagePaths,
+      stopGraceMs: getAgentStopGraceMs(controls.cfg),
+      hostTools: feishuHost.tools,
+      hostUriSchemes: feishuHost.uriSchemes,
+      ...(getAgentBackend(controls.cfg) === 'codex'
+        ? { additionalContext: buildFeishuTurnContext(batch, project) }
+        : {}),
+    });
+  } catch (err) {
+    taskStore.finish(task.taskId, 'failed', {
+      error: truncateTaskText(err instanceof Error ? err.message : String(err), 280),
+    });
+    throw err;
+  }
   const handle = activeRuns.register(scope, run);
 
   // Resolve idle-timeout for this run: scope override (on SessionEntry) wins
@@ -764,6 +812,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   const uiCards = new Map<string, { messageId: string; title: string }>();
   const uiHooks: AgentStreamHooks = {
     async onSystem(sessionId) {
+      taskStore.update(task.taskId, { codexThreadId: sessionId, stage: '已连接 Codex 会话' });
       if (!projectBindings) return;
       if (topicBinding) {
         if (sessionId === topicBinding.codexThreadId) return;
@@ -792,6 +841,10 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
       });
     },
     async onUiRequest(request) {
+      taskStore.update(task.taskId, {
+        status: request.method === 'approval' ? 'waiting_approval' : 'waiting_input',
+        stage: request.title,
+      });
       try {
         const existing = uiCards.get(request.id);
         if (existing) {
@@ -806,6 +859,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
       }
     },
     async onUiCancel(targetId) {
+      taskStore.update(task.taskId, { status: 'running', stage: '继续执行' });
       const entry = uiCards.get(targetId);
       if (!entry) return;
       try {
@@ -824,6 +878,24 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
   const reactionId =
     replyMode === 'card' ? undefined : await addWorkingReaction(channel, lastMsg.messageId);
 
+  const persistTaskState = async (state: RunState): Promise<void> => {
+    taskStore.update(task.taskId, taskPatchFromRunState(state));
+  };
+
+  const finishTask = (state: RunState): void => {
+    const status = taskStatusFromRunState(state);
+    if (status === 'running' || status === 'waiting_input' || status === 'waiting_approval' || status === 'queued') return;
+    taskStore.finish(task.taskId, status, taskPatchFromRunState(state));
+  };
+
+  const failTask = (err: unknown): void => {
+    const current = taskStore.get(task.taskId);
+    if (current?.status === 'succeeded' || current?.status === 'cancelled') return;
+    taskStore.finish(task.taskId, 'failed', {
+      error: truncateTaskText(err instanceof Error ? err.message : String(err), 280),
+    });
+  };
+
   try {
     if (replyMode === 'card') {
       const progress = new ReliableProgress(
@@ -832,6 +904,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
         sendOpts,
         renderNonStreamingCard((state) => renderCard(filterForPrefs(state), {
           sessionActions: Boolean(project && threadScoped),
+          taskId: task.taskId,
         })),
         initialState,
         { renderFinal: (state) => renderText(filterForPrefs(state)) },
@@ -844,11 +917,16 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
           scope,
           cwd,
           idleTimeoutMs,
-          (state) => progress.update(state),
+          async (state) => {
+            await persistTaskState(state);
+            await progress.update(state);
+          },
           uiHooks,
         );
+        finishTask(finalState);
         await progress.complete(finalState);
       } catch (err) {
+        failTask(err);
         await progress.fail(err);
         throw err;
       }
@@ -857,7 +935,7 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
         channel,
         chatId,
         sendOpts,
-        (state, meta) => renderMarkdownProgressCard(filterForPrefs(state), meta),
+        (state, meta) => renderMarkdownProgressCard(filterForPrefs(state), meta, task.taskId),
         initialState,
         { renderFinal: (state) => renderText(filterForPrefs(state)) },
       );
@@ -869,11 +947,16 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
           scope,
           cwd,
           idleTimeoutMs,
-          (state) => progress.update(state),
+          async (state) => {
+            await persistTaskState(state);
+            await progress.update(state);
+          },
           uiHooks,
         );
+        finishTask(finalState);
         await progress.complete(finalState);
       } catch (err) {
+        failTask(err);
         await progress.fail(err);
         throw err;
       }
@@ -881,16 +964,17 @@ async function runAgentBatch(deps: RunBatchDeps): Promise<void> {
       // text mode: drain the agent stream without sending anything during
       // the run, then post the final rendered text once as a plain markdown
       // (msg_type=post) message — no card, no streaming, no typewriter.
-      let finalState: RunState = initialState;
-      await processAgentStream(handle, sessions, scope, cwd, idleTimeoutMs, async (state) => {
-        finalState = state;
+      const finalState = await processAgentStream(handle, sessions, scope, cwd, idleTimeoutMs, async (state) => {
+        await persistTaskState(state);
       }, uiHooks);
+      finishTask(finalState);
       const body = renderText(filterForPrefs(finalState));
       if (body.trim()) {
         await channel.send(chatId, { markdown: body }, sendOpts);
       }
     }
   } catch (err) {
+    failTask(err);
     log.fail('stream', err);
   } finally {
     activeRuns.unregister(scope, run);
@@ -911,6 +995,61 @@ function findTopicBinding(
   // topics created by older bridge versions usable after this migration.
   return (threadId ? bindings.findTopic(chatId, threadId) : undefined)
     ?? (rootId ? bindings.findTopic(chatId, rootId) : undefined);
+}
+
+function taskPatchFromRunState(state: RunState): Partial<TaskRecord> {
+  const tools = state.blocks
+    .filter((block): block is Extract<RunState['blocks'][number], { kind: 'tool' }> => block.kind === 'tool');
+  const tests = tools.filter((tool) => /\b(?:test|vitest|jest|pytest|cargo test|go test)\b/i.test(JSON.stringify(tool.tool.input)));
+  const latestText = [...state.blocks]
+    .reverse()
+    .find((block): block is Extract<RunState['blocks'][number], { kind: 'text' }> => block.kind === 'text' && !block.streaming);
+  const diffStatus = state.ui.statuses['代码改动'];
+  const changedLines = diffStatus?.match(/(\d+)\s*行/)?.[1];
+  const currentTool = [...tools].reverse().find((tool) => tool.tool.status === 'running')?.tool.name;
+  const stage = state.ui.statuses['会话状态']
+    ?? (state.footer === 'tool_running' ? currentTool ?? '调用工具' : footerText(state.footer));
+
+  return {
+    status: taskStatusFromRunState(state),
+    stage,
+    ...(currentTool ? { currentTool } : {}),
+    toolCount: tools.length,
+    failedToolCount: tools.filter((tool) => tool.tool.status === 'error').length,
+    testCount: tests.length,
+    failedTestCount: tests.filter((tool) => tool.tool.status === 'error').length,
+    ...(changedLines ? { changedLines: Number(changedLines) } : {}),
+    ...(latestText?.content ? { summary: truncateTaskText(latestText.content, 280) } : {}),
+    ...(state.errorMsg ? { error: truncateTaskText(state.errorMsg, 280) } : {}),
+    ...(state.usage ? {
+      usage: {
+        totalTokens: state.usage.totalTokens,
+        contextTokens: state.usage.contextTokens,
+        modelContextWindow: state.usage.modelContextWindow,
+      },
+    } : {}),
+  };
+}
+
+function taskStatusFromRunState(state: RunState): TaskStatus {
+  if (state.terminal === 'done') return 'succeeded';
+  if (state.terminal === 'error' || state.terminal === 'idle_timeout') return 'failed';
+  if (state.terminal === 'interrupted') return 'cancelled';
+  if (state.footer === 'waiting_input') return 'waiting_input';
+  return 'running';
+}
+
+function footerText(footer: RunState['footer']): string | undefined {
+  if (footer === 'thinking') return '思考中';
+  if (footer === 'tool_running') return '调用工具';
+  if (footer === 'streaming') return '输出中';
+  if (footer === 'waiting_input') return '等待输入';
+  return undefined;
+}
+
+function truncateTaskText(text: string, max: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return normalized.length <= max ? normalized : `${normalized.slice(0, max - 1)}…`;
 }
 
 /**

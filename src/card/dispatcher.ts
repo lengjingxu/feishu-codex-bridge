@@ -4,7 +4,7 @@ import type { ActiveRuns } from '../bot/active-runs';
 import type { ChatModeCache } from '../bot/chat-mode-cache';
 import type { PendingQueue } from '../bot/pending-queue';
 import { runCommandHandler, type CommandContext, type Controls } from '../commands';
-import { isChatAllowed, isUserAllowed } from '../config/schema';
+import { isChatAllowed, isProjectAllowed, isUserAllowed } from '../config/schema';
 import { log } from '../core/logger';
 import type { SessionStore } from '../session/store';
 import { updateManagedCard } from './managed';
@@ -19,6 +19,7 @@ import type { WorkspaceStore } from '../workspace/store';
 import type { ProjectCatalog } from '../project/catalog';
 import type { ProjectBindingStore } from '../project/types';
 import type { SessionSyncManager } from '../session/sync';
+import type { JsonTaskStore } from '../task/store';
 import { isThreadScoped } from '../bot/scope';
 import { lookupMessageThreadId } from '../bot/thread';
 
@@ -43,6 +44,7 @@ export interface CardDispatchDeps {
   projectCatalog?: ProjectCatalog;
   projectBindings?: ProjectBindingStore;
   sessionSync?: SessionSyncManager;
+  taskStore?: JsonTaskStore;
 }
 
 export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
@@ -86,6 +88,14 @@ export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
     });
     return;
   }
+  const project = deps.projectBindings?.findProjectByChat(chatId);
+  if (project && !isProjectAllowed(deps.controls.cfg, project.projectKey, operatorId)) {
+    log.info('cardAction', 'skip-not-allowed-project', {
+      project: project.projectKey,
+      operator: operatorId.slice(-6),
+    });
+    return;
+  }
 
   if (isOmpUiPayload(payload)) {
     await respondToOmpUi(deps, payload, formValue, scope);
@@ -120,6 +130,8 @@ export async function handleCardAction(deps: CardDispatchDeps): Promise<void> {
     projectCatalog: deps.projectCatalog,
     projectBindings: deps.projectBindings,
     sessionSync: deps.sessionSync,
+    taskStore: deps.taskStore,
+    pending: deps.pending,
   };
 
   const [name, ...rest] = cmd.split('.');
