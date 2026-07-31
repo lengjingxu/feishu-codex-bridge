@@ -1,4 +1,5 @@
-import type { Block, FooterStatus, RunState, ToolEntry, UiState } from './run-state';
+import type { Block, FooterStatus, RunState, ToolEntry } from './run-state';
+import { runStatusText } from './status-text';
 import { toolBodyMd, toolHeaderText } from './tool-render';
 
 const REASONING_MAX = 1500;
@@ -26,7 +27,7 @@ export function renderCard(state: RunState, options: RunCardOptions = {}): objec
     elements.push(reasoningPanel(state.reasoning.content, state.reasoning.active));
   }
 
-  const ui = uiContextPanel(state.ui);
+  const ui = uiContextPanel(state);
   if (ui) elements.push(ui);
 
   for (const group of groupBlocks(state.blocks)) {
@@ -311,10 +312,12 @@ function footerStatus(status: Exclude<FooterStatus, null>): object {
   return noteMd(text);
 }
 
-function uiContextPanel(ui: UiState): object | undefined {
+function uiContextPanel(state: RunState): object | undefined {
+  const ui = state.ui;
   const lines: string[] = [];
-  if (ui.title) lines.push(`**标题**：${ui.title}`);
+  lines.push(`**状态**：${runStatusText(state.terminal, state.footer)}`);
   for (const [key, text] of Object.entries(ui.statuses)) {
+    if (key === '会话状态') continue;
     lines.push(`**${key}**：${text}`);
   }
   for (const [key, widget] of Object.entries(ui.widgets)) {

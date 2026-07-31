@@ -114,7 +114,12 @@ describe('ReliableProgress', () => {
     expect(send.mock.calls[1]?.[1]).toEqual({
       markdown: expect.stringContaining('后续进度将以普通消息发送'),
     });
-    expect(send.mock.calls[2]?.[1]).toEqual({ markdown: '最终完成' });
+    expect(send.mock.calls[2]?.[1]).toEqual({
+      markdown: expect.stringContaining('状态：已完成'),
+    });
+    expect(send.mock.calls[2]?.[1]).toEqual({
+      markdown: expect.stringContaining('最终完成'),
+    });
   });
 
   it('sends completed commentary only after card delivery has degraded', async () => {
@@ -169,7 +174,12 @@ describe('ReliableProgress', () => {
     await progress.complete(doneState('最终完成'));
 
     expect(send).toHaveBeenCalledTimes(2);
-    expect(send.mock.calls[1]?.[1]).toEqual({ markdown: '最终完成' });
+    expect(send.mock.calls[1]?.[1]).toEqual({
+      markdown: expect.stringContaining('状态：已完成'),
+    });
+    expect(send.mock.calls[1]?.[1]).toEqual({
+      markdown: expect.stringContaining('最终完成'),
+    });
   });
 });
 
