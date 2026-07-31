@@ -236,6 +236,8 @@ Bridge 会自动创建一个 Codex Session，把首条话题内容作为第一�
 
 话题欢迎卡和任务完成卡都提供“刷新进度”；也可以直接发送“刷新进度”或 `/sync`。自动同步每 5 秒读取一次已持久化的会话状态，只更新同一张飞书卡片，不会连续发送新消息，也不会重新执行 Codex 任务。自动同步只在当前 Bridge 进程内有效，重启后默认关闭。
 
+发送“任务”或 `/tasks` 可查看最近任务；任务卡只保留项目、状态、当前阶段和验收摘要。发送 `/preset` 可选择“审查当前改动”“运行相关测试”或“发布前检查”，模板会在当前 Codex 话题中发起新任务。
+
 会话列表支持按标题关键词搜索；归档后的结果卡可直接撤销归档。分支会话通过 Codex `thread/fork` 复制历史，并自动创建一个新的飞书话题，原话题绑定保持不变。
 
 私聊和项目群工作台仍兼容以下中文入口：
@@ -244,6 +246,8 @@ Bridge 会自动创建一个 Codex Session，把首条话题内容作为第一�
 | --- | --- |
 | 项目、我的项目、选择项目、开始 | 打开项目列表 |
 | 会话、查看会话 | 打开会话列表 |
+| 任务、查看任务 | 查看最近任务和关键状态 |
+| `/preset` | 选择审查、测试或发布前检查模板 |
 | 新建、新建会话 | 兼容入口：新建 Codex 会话 |
 | 状态、当前状态 | 查看状态 |
 | 停止、停止任务 | 中断当前任务 |
@@ -293,6 +297,7 @@ Bridge 的运行数据默认位于 `~/.feishu-omp-bridge/`：
 | `secrets.enc` | 加密后的 App Secret |
 | `sessions.json` | 飞书范围到 Agent Session 的映射 |
 | `project-bindings.json` | 项目群、话题和 Codex Session 的映射 |
+| `tasks.json` | 最近任务的本地状态、阶段和验收摘要；不保存完整用户 prompt |
 | `projects/feishu-assistant/` | Feishu Assistant 专用 Codex Project 与项目级说明 |
 | `logs/` | 结构化运行日志 |
 | `media/` | 飞书附件缓存 |
@@ -323,7 +328,10 @@ Bridge 创建新会话时会写入桌面兼容的 thread 来源、稳定的飞�
     "access": {
       "allowedUsers": ["ou_xxx"],
       "allowedChats": ["oc_xxx"],
-      "admins": ["ou_xxx"]
+      "admins": ["ou_xxx"],
+      "projectUsers": {
+        "local::/Users/you/code/example": ["ou_xxx"]
+      }
     }
   }
 }
@@ -332,6 +340,7 @@ Bridge 创建新会话时会写入桌面兼容的 thread 来源、稳定的飞�
 - `allowedUsers`：允许操作机器人的用户。
 - `allowedChats`：允许使用机器人的普通群聊。
 - `admins`：允许执行配置、重启等管理操作的用户。
+- `projectUsers`：按项目限制可操作的用户；键使用项目列表里的稳定 `projectKey`。未配置的项目沿用全局用户权限，显式配置在 `admins` 中的管理员始终可访问。
 
 ## 安全边界
 

@@ -20,6 +20,9 @@ import {
   sessionDetailCard,
   sessionSearchCard,
   sessionsCard,
+  taskDetailCard,
+  tasksCard,
+  presetsCard,
   statusCard,
   topicWelcomeCard,
   welcomeCard,
@@ -58,8 +61,11 @@ import { lookupMessageThreadId } from '../bot/thread';
 import type { ProjectCatalog } from '../project/catalog';
 import type { Project, ProjectBindingStore } from '../project/types';
 import type { SessionSyncManager } from '../session/sync';
+import { JsonTaskStore } from '../task/store';
+import type { TaskRecord } from '../task/types';
 import { showProjectWorkbench } from '../project/workbench';
 import { isWithinProjectRoots } from '../config/path-policy';
+import type { PendingQueue } from '../bot/pending-queue';
 
 export interface Controls {
   /** Restart the bridge in-process: disconnect WS, kill OMP runs, reload
@@ -105,6 +111,8 @@ export interface CommandContext {
   projectCatalog?: ProjectCatalog;
   projectBindings?: ProjectBindingStore;
   sessionSync?: SessionSyncManager;
+  taskStore?: JsonTaskStore;
+  pending?: PendingQueue;
 }
 
 type Handler = (args: string, ctx: CommandContext) => Promise<void>;
@@ -112,6 +120,9 @@ type Handler = (args: string, ctx: CommandContext) => Promise<void>;
 const handlers: Record<string, Handler> = {
   '/projects': handleProjects,
   '/sessions': handleSessions,
+  '/tasks': handleTasks,
+  '/task': handleTask,
+  '/preset': handlePreset,
   '/project': handleProject,
   '/session': handleSession,
   '/welcome': handleWelcome,
@@ -157,6 +168,7 @@ export async function tryHandleCommand(ctx: CommandContext): Promise<boolean> {
   const aliases: Record<string, string> = {
     '项目': '/projects', '我的项目': '/projects', '选择项目': '/projects', '项目群': '/projects', '开始': '/projects',
     '会话': '/sessions', '查看会话': '/sessions', '新建': '/session new', '新建会话': '/session new',
+    '任务': '/tasks', '查看任务': '/tasks', '任务模板': '/preset',
     '状态': '/status', '当前状态': '/status', '停止': '/stop', '停止任务': '/stop',
     '帮助': '/help', '怎么用': '/help',
     '同步': '/sync', '刷新进度': '/sync', '刷新 Codex 进度': '/sync',
@@ -446,6 +458,117 @@ async function handleSessions(_args: string, ctx: CommandContext): Promise<void>
     ? await ctx.agent.listSessionPage(project.cwd, cursor, searchTerm)
     : { sessions: await ctx.agent.listSessions(project.cwd) };
   await sendCommandCard(ctx, sessionsCard(project.name, page.sessions, page.nextCursor));
+}
+
+const TASK_PRESETS = [
+  {
+    id: 'review',
+    name: '审查当前改动',
+    description: '只检查问题，按严重性给出文件和行号，不直接修改文件。',
+    prompt: '请审查当前未提交改动，按严重性列出问题，并给出文件与行号。不要直接修改文件。',
+  },
+  {
+    id: 'test',
+    name: '运行相关测试',
+    description: '运行最小相关测试集，失败时先定位原因再修复。',
+    prompt: '请运行与当前改动相关的最小测试集；如果失败，定位原因并修复，然后汇报测试结果。',
+  },
+  {
+    id: 'check',
+    name: '发布前检查',
+    description: '检查类型、构建和关键测试，只汇报必要结论。',
+    prompt: '请完成发布前检查：类型检查、构建和关键测试。只汇报必要结论；发现问题时修复并说明改动。',
+  },
+] as const;
+
+async function handleTasks(_args: string, ctx: CommandContext): Promise<void> {
+  if (!ctx.taskStore) {
+    await reply(ctx, '任务中心尚未启用。');
+    return;
+  }
+  await sendCommandCard(ctx, tasksCard(ctx.taskStore.list(20)));
+}
+
+async function handleTask(args: string, ctx: CommandContext): Promise<void> {
+  if (!ctx.taskStore) {
+    await reply(ctx, '任务中心尚未启用。');
+    return;
+  }
+  const [action, taskId] = args.trim().split(/\s+/, 2);
+  const target = taskId ? ctx.taskStore.get(taskId) : ctx.taskStore.latestForScope(ctx.scope);
+  if (!target) {
+    await reply(ctx, '没有找到这个任务。发送 `/tasks` 查看最近任务。');
+    return;
+  }
+  if (action === 'stop') {
+    const stopped = ctx.activeRuns.interrupt(target.scope);
+    if (stopped) ctx.taskStore.finish(target.taskId, 'cancelled', { summary: '已从飞书停止任务。' });
+    await commandFeedback(
+      ctx,
+      stopped ? '停止请求已发送' : '任务当前不在执行中',
+      stopped ? '正在停止当前任务。' : `任务状态：${taskStatusLabel(target.status)}。`,
+      [{ text: '返回任务', value: { cmd: 'tasks' }, style: 'primary' }],
+    );
+    return;
+  }
+  await sendCommandCard(ctx, taskDetailCard(target));
+}
+
+async function handlePreset(args: string, ctx: CommandContext): Promise<void> {
+  const [action, presetId] = args.trim().split(/\s+/, 2);
+  if (!action) {
+    await sendCommandCard(ctx, presetsCard(TASK_PRESETS));
+    return;
+  }
+  if (action !== 'use' || !presetId) {
+    await reply(ctx, '用法：`/preset` 查看模板，或 `/preset use review` 使用模板。');
+    return;
+  }
+  const preset = TASK_PRESETS.find((item) => item.id === presetId);
+  if (!preset) {
+    await reply(ctx, '没有找到这个模板，请发送 `/preset` 查看可用模板。');
+    return;
+  }
+  if (!ctx.msg.threadId || !ctx.pending) {
+    await reply(ctx, '请进入一个 Codex 话题后使用任务模板。');
+    return;
+  }
+  if (ctx.activeRuns.has(ctx.scope)) {
+    await reply(ctx, '当前任务仍在执行，请等待完成后再使用模板。');
+    return;
+  }
+  const synthetic: NormalizedMessage = {
+    messageId: `preset_${Date.now().toString(36)}`,
+    chatId: ctx.msg.chatId,
+    chatType: ctx.msg.chatType,
+    threadId: ctx.msg.threadId,
+    rootId: ctx.msg.rootId,
+    senderId: ctx.msg.senderId,
+    senderName: ctx.msg.senderName,
+    content: preset.prompt,
+    rawContentType: 'text',
+    resources: [],
+    mentions: [],
+    mentionAll: false,
+    mentionedBot: false,
+    createTime: Date.now(),
+  };
+  ctx.pending.push(ctx.scope, synthetic);
+  await reply(ctx, `已下发“${preset.name}”，稍后会在当前话题执行。`);
+}
+
+function taskStatusLabel(status: TaskRecord['status']): string {
+  const labels: Record<TaskRecord['status'], string> = {
+    queued: '排队中',
+    running: '执行中',
+    waiting_approval: '等待确认',
+    waiting_input: '等待输入',
+    succeeded: '已完成',
+    failed: '失败',
+    cancelled: '已停止',
+    stale: '需继续',
+  };
+  return labels[status];
 }
 
 async function handleSession(args: string, ctx: CommandContext): Promise<void> {
@@ -820,6 +943,7 @@ async function handleSync(args: string, ctx: CommandContext): Promise<void> {
 
   try {
     const detail = await ctx.sessionSync.refresh(read, update);
+    reconcileTaskFromSession(ctx.taskStore, ctx.scope, detail);
     if (autoMode) {
       ctx.sessionSync.start(ctx.scope, read, update, {
         intervalMs: 5_000,
@@ -831,6 +955,29 @@ async function handleSync(args: string, ctx: CommandContext): Promise<void> {
     log.fail('session-sync', error, { scope: ctx.scope });
     await reply(ctx, `同步 Codex 进度失败：${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function reconcileTaskFromSession(
+  taskStore: JsonTaskStore | undefined,
+  scope: string,
+  detail: import('../project/types').SessionDetail,
+): void {
+  const task = taskStore?.latestForScope(scope);
+  if (!task) return;
+  if (!taskStore) return;
+  const status = detail.activeFlags?.includes('waitingOnApproval')
+    ? 'waiting_approval'
+    : detail.activeFlags?.includes('waitingOnUserInput')
+      ? 'waiting_input'
+      : detail.status === 'active'
+        ? 'running'
+        : task.status;
+  taskStore.update(task.taskId, {
+    codexThreadId: detail.threadId,
+    status,
+    summary: detail.preview,
+    stage: status === 'running' ? 'Codex 会话执行中' : undefined,
+  });
 }
 
 async function handleStop(_args: string, ctx: CommandContext): Promise<void> {
@@ -1490,7 +1637,14 @@ async function submitConfig(ctx: CommandContext): Promise<void> {
       requireMentionInGroup,
       // Empty arrays serialize fine but read identically to omitted ones
       // (isUserAllowed / isAdmin both treat length===0 as unrestricted).
-      access: { allowedUsers, allowedChats, admins },
+      access: {
+        allowedUsers,
+        allowedChats,
+        admins,
+        ...(ctx.controls.cfg.preferences?.access?.projectUsers
+          ? { projectUsers: ctx.controls.cfg.preferences.access.projectUsers }
+          : {}),
+      },
     };
 
     try {

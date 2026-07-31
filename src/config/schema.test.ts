@@ -10,6 +10,7 @@ import {
   resolveCodexAppServerBinary,
   getProjectRoots,
   getEnableFeishuAssistantProject,
+  isProjectAllowed,
   type AppConfig,
 } from './schema';
 
@@ -58,5 +59,15 @@ describe('Codex project preferences', () => {
     expect(getEnableFeishuAssistantProject(cfg())).toBe(false);
     expect(getEnableFeishuAssistantProject(cfg({ agentBackend: 'codex' }))).toBe(true);
     expect(getEnableFeishuAssistantProject(cfg({ agentBackend: 'codex', enableFeishuAssistantProject: false }))).toBe(false);
+  });
+
+  it('supports optional per-project user allowlists with admin access', () => {
+    const projectKey = 'local::/tmp/demo';
+    const restricted = cfg({ access: { projectUsers: { [projectKey]: ['user-1'] }, admins: ['admin-1'] } });
+    expect(isProjectAllowed(restricted, projectKey, 'user-1')).toBe(true);
+    expect(isProjectAllowed(restricted, projectKey, 'user-2')).toBe(false);
+    expect(isProjectAllowed(restricted, projectKey, 'admin-1')).toBe(true);
+    expect(isProjectAllowed(restricted, 'local::/tmp/other', 'user-2')).toBe(true);
+    expect(isProjectAllowed(restricted, undefined, 'user-2')).toBe(true);
   });
 });

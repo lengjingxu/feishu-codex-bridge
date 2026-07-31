@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { projectWelcomeCard, projectsCard, sessionDetailCard, sessionProgressCard, sessionSearchCard, sessionsCard, topicTitle, topicWelcomeCard, welcomeCard } from './templates';
+import { projectWelcomeCard, projectsCard, sessionDetailCard, sessionProgressCard, sessionSearchCard, sessionsCard, taskDetailCard, tasksCard, presetsCard, topicTitle, topicWelcomeCard, welcomeCard } from './templates';
 import type { SessionDetail } from '../project/types';
+import type { TaskRecord } from '../task/types';
 
 function text(card: object): string {
   return JSON.stringify(card);
@@ -11,6 +12,7 @@ describe('project-first Feishu cards', () => {
     const rendered = text(welcomeCard());
     expect(rendered).toContain('选择项目');
     expect(rendered).toContain('使用帮助');
+    expect(rendered).toContain('"type":"callback"');
     expect(rendered).not.toContain('chat_id');
   });
 
@@ -93,5 +95,29 @@ describe('project-first Feishu cards', () => {
     const card = text(sessionDetailCard('示例项目', detail));
     expect(card).toContain('归档会话');
     expect(card).toContain('返回会话列表');
+  });
+
+  it('keeps task cards concise while exposing acceptance evidence', () => {
+    const task: TaskRecord = {
+      taskId: 'task-1', scope: 'chat:topic', chatId: 'chat', topicId: 'topic',
+      projectKey: 'local::/tmp/project', projectName: '示例项目', cwd: '/tmp/project',
+      sourceMessageId: 'message-1',
+      title: '检查发布前状态', createdBy: 'user', createdAt: Date.now(), updatedAt: Date.now(),
+      status: 'succeeded', stage: '空闲', summary: '检查完成', toolCount: 3,
+      failedToolCount: 0, testCount: 2, failedTestCount: 0, changedLines: 0,
+    };
+    const list = text(tasksCard([task]));
+    expect(list).toContain('检查发布前状态');
+    expect(list).toContain('查看详情');
+    expect(list).toContain('进入原话题查看完整过程');
+    expect(list).not.toContain('chat:topic');
+    const detail = text(taskDetailCard(task));
+    expect(detail).toContain('验收摘要');
+    expect(detail).toContain('工具：3 次');
+    expect(detail).toContain('测试：2 次');
+    expect(detail).toContain('改动：约 0 行');
+    const presets = text(presetsCard([{ id: 'check', name: '发布前检查', description: '检查类型和测试。' }]));
+    expect(presets).toContain('发布前检查');
+    expect(presets).toContain('使用模板');
   });
 });

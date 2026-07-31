@@ -1,4 +1,5 @@
 import type { SessionDetail } from '../project/types';
+import type { TaskRecord } from '../task/types';
 
 interface ButtonSpec {
   text: string;
@@ -12,6 +13,7 @@ function button(spec: ButtonSpec): object {
     text: { tag: 'plain_text', content: spec.text },
     type: spec.style ?? 'default',
     value: spec.value,
+    behaviors: [{ type: 'callback', value: spec.value }],
   };
 }
 
@@ -39,6 +41,7 @@ export function welcomeCard(): object {
     HR,
     actions([
       { text: '选择项目', value: { cmd: 'projects' }, style: 'primary' },
+      { text: '查看任务', value: { cmd: 'tasks' } },
       { text: '已绑定项目', value: { cmd: 'projects.bound' } },
     ]),
     actions([
@@ -92,6 +95,7 @@ export function projectWelcomeCard(info: ProjectWelcomeInfo): object {
     divMd(`项目：**${escapeMd(info.name)}**\n当前位置：项目群\n\n${guidance}\n\n需要恢复历史对话时，再查看会话列表。`),
     actions([
       { text: '查看会话', value: { cmd: 'sessions' }, style: 'primary' },
+      { text: '查看任务', value: { cmd: 'tasks' } },
       { text: '项目状态', value: { cmd: 'project.status' } },
     ]),
     actions([
@@ -227,12 +231,109 @@ export function sessionProgressCard(projectName: string, detail: SessionDetail, 
   ]);
 }
 
+export function tasksCard(tasks: TaskRecord[]): object {
+  const elements: object[] = [
+    divMd(tasks.length > 0
+      ? '最近任务。这里只显示关键状态，进入原话题查看完整过程。'
+      : '还没有可查看的任务。'),
+  ];
+  for (const task of tasks) {
+    const title = escapeMd(task.title || '未命名任务');
+    const project = escapeMd(task.projectName || '未绑定项目');
+    const detail = [
+      `**${title}**`,
+      `${project} · ${taskStatusText(task.status)}`,
+      task.stage ? `当前：${escapeMd(task.stage)}` : task.summary ? escapeMd(task.summary) : undefined,
+      formatRelative(task.updatedAt),
+    ].filter(Boolean).join('\n');
+    elements.push(HR, divMd(detail));
+    elements.push(actions([
+      { text: '查看详情', value: { cmd: 'task.detail', arg: task.taskId }, style: 'primary' },
+      ...(isTaskActive(task.status)
+        ? [{ text: '停止任务', value: { cmd: 'task.stop', arg: task.taskId }, style: 'danger' as const }]
+        : []),
+    ]));
+  }
+  elements.push(HR, actions([
+    { text: '刷新任务', value: { cmd: 'tasks' }, style: 'primary' },
+    { text: '任务模板', value: { cmd: 'preset' } },
+  ]));
+  return shell('Codex 任务', elements);
+}
+
+export function taskDetailCard(task: TaskRecord): object {
+  const evidence = [
+    `工具：${task.toolCount} 次${task.failedToolCount ? `，失败 ${task.failedToolCount} 次` : ''}`,
+    `测试：${task.testCount ? `${task.testCount} 次${task.failedTestCount ? `，失败 ${task.failedTestCount} 次` : ''}` : '未识别'}`,
+    task.changedLines === undefined ? undefined : `改动：约 ${task.changedLines} 行`,
+    task.usage?.contextTokens === undefined ? undefined : `上下文：${task.usage.contextTokens.toLocaleString('en-US')} tokens`,
+  ].filter(Boolean).join(' · ');
+  const elements: object[] = [
+    divMd([
+      `项目：**${escapeMd(task.projectName || '未绑定项目')}**`,
+      `任务：**${escapeMd(task.title || '未命名任务')}**`,
+      `状态：**${taskStatusText(task.status)}**`,
+      task.stage ? `当前：${escapeMd(task.stage)}` : undefined,
+      task.summary ? `结果：${escapeMd(task.summary)}` : undefined,
+      task.error ? `错误：${escapeMd(task.error)}` : undefined,
+    ].filter(Boolean).join('\n')),
+    HR,
+    divMd(`验收摘要\n${evidence || '暂无验收摘要。'}`),
+  ];
+  const buttons: ButtonSpec[] = [
+    { text: '返回任务', value: { cmd: 'tasks' }, style: 'primary' },
+  ];
+  if (isTaskActive(task.status)) {
+    buttons.unshift({ text: '停止任务', value: { cmd: 'task.stop', arg: task.taskId }, style: 'danger' });
+  }
+  elements.push(HR, actions(buttons));
+  return shell('任务详情', elements);
+}
+
+export interface TaskPresetInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export function presetsCard(presets: ReadonlyArray<TaskPresetInfo>): object {
+  const elements: object[] = [divMd('选择一个高频模板，Bridge 会把它作为新任务发送给当前 Codex 话题。')];
+  for (const preset of presets) {
+    elements.push(HR, divMd(`**${escapeMd(preset.name)}**\n${escapeMd(preset.description)}`));
+    elements.push(actions([
+      { text: '使用模板', value: { cmd: 'preset.use', arg: preset.id }, style: 'primary' },
+    ]));
+  }
+  elements.push(HR, actions([{ text: '返回任务', value: { cmd: 'tasks' } }]));
+  return shell('任务模板', elements);
+}
+
 function sessionStatusText(status: string, activeFlags: string[] | undefined): string {
   if (activeFlags?.includes('waitingOnApproval')) return '等待确认';
   if (activeFlags?.includes('waitingOnUserInput')) return '等待输入';
   if (status === 'active') return '执行中';
   if (status === 'archived') return '已归档';
   return '空闲';
+}
+
+function taskStatusText(status: TaskRecord['status']): string {
+  switch (status) {
+    case 'queued': return '排队中';
+    case 'running': return '执行中';
+    case 'waiting_approval': return '等待确认';
+    case 'waiting_input': return '等待输入';
+    case 'succeeded': return '已完成';
+    case 'failed': return '失败';
+    case 'cancelled': return '已停止';
+    case 'stale': return '需继续';
+  }
+}
+
+function isTaskActive(status: TaskRecord['status']): boolean {
+  return status === 'queued'
+    || status === 'running'
+    || status === 'waiting_approval'
+    || status === 'waiting_input';
 }
 
 export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd: string): object {
@@ -250,6 +351,7 @@ export function topicWelcomeCard(projectName: string, sessionTitle: string, cwd:
     ]),
     actions([
       { text: '查看状态', value: { cmd: 'status' } },
+      { text: '查看任务', value: { cmd: 'tasks' } },
       { text: '开启自动刷新', value: { cmd: 'sync.auto' } },
       { text: '使用说明', value: { cmd: 'help' } },
     ]),

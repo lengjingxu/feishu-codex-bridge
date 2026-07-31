@@ -72,7 +72,7 @@ export interface SecretsConfig {
 export type MessageReplyMode = 'card' | 'markdown' | 'text';
 
 /**
- * Access control settings. All three lists default to "no restriction" when
+ * Access control settings. All lists default to "no restriction" when
  * empty / undefined, so existing deployments are not broken on upgrade.
  * Operators that want a hardened deployment fill these in via
  * `~/.feishu-omp-bridge/config.json` (no CLI surface yet — by design, since
@@ -90,6 +90,12 @@ export interface AppAccess {
    * (/account, /config, /exit, /reconnect, /doctor, /cd, /ws). Empty /
    * undefined = no admin restriction (every allowed user is an admin). */
   admins?: string[];
+  /**
+   * Optional per-project open_id allowlist. The key is the project's stable
+   * projectKey (for example `local::/path/to/repo`). Missing or empty entries
+   * inherit the global user allowlist; configured entries also allow admins.
+   */
+  projectUsers?: Record<string, string[]>;
 }
 
 export interface AppPreferences {
@@ -365,6 +371,16 @@ export function isChatAllowed(cfg: AppConfig, chatId: string): boolean {
  * restriction (every allowed user can run admin commands). */
 export function isAdmin(cfg: AppConfig, senderId: string): boolean {
   const list = cfg.preferences?.access?.admins;
+  if (!list || list.length === 0) return true;
+  return list.includes(senderId);
+}
+
+/** True when a user may interact with a specific project. */
+export function isProjectAllowed(cfg: AppConfig, projectKey: string | undefined, senderId: string): boolean {
+  if (!projectKey) return true;
+  const admins = cfg.preferences?.access?.admins;
+  if (admins && admins.length > 0 && admins.includes(senderId)) return true;
+  const list = cfg.preferences?.access?.projectUsers?.[projectKey];
   if (!list || list.length === 0) return true;
   return list.includes(senderId);
 }

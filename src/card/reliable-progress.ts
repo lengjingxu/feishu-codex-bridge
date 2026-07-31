@@ -268,6 +268,7 @@ export class ReliableProgress {
 export function renderMarkdownProgressCard(
   state: RunState,
   meta: { updatedAt: number; handoff: boolean },
+  taskId?: string,
 ): object {
   const renderedState = meta.handoff
     ? { ...state, terminal: 'done' as const, footer: null }
@@ -282,7 +283,7 @@ export function renderMarkdownProgressCard(
     config: {
       // Full-card updates do not need CardKit's time-limited streaming mode.
       streaming_mode: false,
-      summary: { content: summaryText(state, meta.updatedAt) },
+      summary: { content: summaryText(state, meta.updatedAt, taskId) },
     },
     body: {
       elements: [
@@ -327,7 +328,7 @@ function freshnessElement(content: string): object {
   };
 }
 
-function summaryText(state: RunState, updatedAt: number): string {
+function summaryText(state: RunState, updatedAt: number, taskId?: string): string {
   const status = state.terminal === 'running'
     ? '执行中'
     : state.terminal === 'done'
@@ -335,7 +336,8 @@ function summaryText(state: RunState, updatedAt: number): string {
       : state.terminal === 'interrupted'
         ? '已中断'
         : '执行异常';
-  return `${status} · ${formatTime(updatedAt)}`;
+  const task = taskId ? `任务 #${taskId.replace(/^task_/, '').slice(0, 8).toUpperCase()} · ` : '';
+  return `${task}${status} · ${formatTime(updatedAt)}`;
 }
 
 function formatTime(timestamp: number): string {
